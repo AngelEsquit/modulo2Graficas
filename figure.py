@@ -1,18 +1,28 @@
 import numpy as np
 
 class Material:
-    """Material sencillo para Phong.
+    """Material con soporte para opaco, reflectivo y transparente.
     color: tuple rgb (0-1)
-    ka, kd, ks: coeficientes ambiente, difuso, especular
+    ka, kd, ks: componentes Phong
     shininess: exponente especular
+    reflectivity: 0..1 proporción de color de reflexión
+    transparency: 0..1 proporción de color refractado
+    ior: índice de refracción (solo si transparency > 0)
+    mtype: 'opaque' | 'reflective' | 'transparent'
+    Nota: Se normaliza para que (local + reflect + refract) no exceda 1.
     """
-    __slots__ = ("color","ka","kd","ks","shininess")
-    def __init__(self, color=(1,1,1), ka=0.1, kd=0.7, ks=0.2, shininess=32):
+    __slots__ = ("color","ka","kd","ks","shininess","reflectivity","transparency","ior","mtype")
+    def __init__(self, color=(1,1,1), ka=0.1, kd=0.7, ks=0.2, shininess=32,
+                 reflectivity=0.0, transparency=0.0, ior=1.5, mtype="opaque"):
         self.color = color
         self.ka = ka
         self.kd = kd
         self.ks = ks
         self.shininess = shininess
+        self.reflectivity = reflectivity
+        self.transparency = transparency
+        self.ior = ior
+        self.mtype = mtype
 
 class Light:
     __slots__ = ("position","color","intensity")

@@ -3,8 +3,8 @@ from pygame.locals import *
 from gl import Renderer
 from BMP_Writer import GenerateBMP
 
-width = 256
-height = 256
+width = 512
+height = 512
 
 pygame.init()
 screen = pygame.display.set_mode((width, height), pygame.SCALED)
@@ -12,6 +12,7 @@ pygame.display.set_caption("Simple RayTracer - Esferas (Phong)")
 clock = pygame.time.Clock()
 
 rend = Renderer(screen)
+rend.load_environment("Enviroment/rogland_clear_night_1k.hdr")
 
 isRunning = True
 while isRunning:
