@@ -71,3 +71,215 @@ class Sphere(Shape):
             "normal": normal / (np.linalg.norm(normal) or 1),
             "material": self.material
         }
+
+class Mesh(Shape):
+    """Malla de triángulos con material uniforme. Carga básica de OBJ y ray-triangle."""
+    def __init__(self, vertices: np.ndarray, faces: list[tuple[int,int,int]], material: Material, position=(0,0,0)):
+        super().__init__(position, material)
+        self.type = "Mesh"
+        self.vertices = np.asarray(vertices, dtype=float)
+        self.faces = faces
+
+    @staticmethod
+    def from_obj(path, material=None, position=(0,0,0), rotation=(0,0,0), scale=(1,1,1)):
+        from pathlib import Path
+        from MathLib import TranslationMatrix, RotationMatrix, ScaleMatrix
+        path = Path(path)
+        verts = []
+        faces = []
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                if parts[0] == 'v' and len(parts) >= 4:
+                    verts.append((float(parts[1]), float(parts[2]), float(parts[3])))
+                elif parts[0] == 'f' and len(parts) >= 4:
+                    idxs = []
+                    for p in parts[1:]:
+                        tok = p.split('/')
+                        v_idx = int(tok[0])
+                        if v_idx < 0:
+                            v_idx = len(verts) + 1 + v_idx
+                        idxs.append(v_idx - 1)
+                    for i in range(1, len(idxs) - 1):
+                        faces.append((idxs[0], idxs[i], idxs[i+1]))
+        V = np.array(verts, dtype=float)
+        ones = np.ones((V.shape[0], 1), dtype=float)
+        Vh = np.hstack([V, ones])
+        M = TranslationMatrix(*position) * RotationMatrix(*rotation) * ScaleMatrix(*scale)
+        Vt = (M @ Vh.T).T[:, :3]
+        return Mesh(Vt, faces, material or Material())
+
+    def ray_intersect(self, origin, direction):
+        closest_t = float('inf')
+        hit_info = None
+        V = self.vertices
+        for a, b, c in self.faces:
+            v0, v1, v2 = V[a], V[b], V[c]
+            hit = self._intersect_triangle(origin, direction, v0, v1, v2)
+            if hit and 0 < hit['t'] < closest_t:
+                closest_t = hit['t']
+                hit_info = hit
+                hit_info['material'] = self.material
+        return hit_info
+
+    @staticmethod
+    def _intersect_triangle(origin, direction, v0, v1, v2):
+        eps = 1e-8
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+        h = np.cross(direction, edge2)
+        a = np.dot(edge1, h)
+        if -eps < a < eps:
+            return None
+        f = 1.0 / a
+        s = origin - v0
+        u = f * np.dot(s, h)
+        if u < 0.0 or u > 1.0:
+            return None
+        q = np.cross(s, edge1)
+        v = f * np.dot(direction, q)
+        if v < 0.0 or u + v > 1.0:
+            return None
+        t = f * np.dot(edge2, q)
+        if t <= eps:
+            return None
+        point = origin + direction * t
+        n = np.cross(edge1, edge2)
+        nn = np.linalg.norm(n) or 1.0
+        normal = n / nn
+        return {"t": t, "point": point, "normal": normal}
+
+
+class Plane(Shape):
+    """Plano infinito definido por un punto y una normal."""
+    def __init__(self, point, normal, material=None):
+        super().__init__(point, material)
+        n = np.array(normal, dtype=float)
+        self.normal = n / (np.linalg.norm(n) or 1.0)
+        self.type = "Plane"
+
+    def ray_intersect(self, origin, direction):
+        denom = float(np.dot(self.normal, direction))
+        if abs(denom) < 1e-6:
+            return None
+        t = float(np.dot(self.position - origin, self.normal) / denom)
+        if t <= 1e-6:
+            return None
+        point = origin + direction * t
+        n = self.normal if denom < 0 else -self.normal  # lado visible
+        return {"t": t, "point": point, "normal": n, "material": self.material}
+
+
+class Disk(Shape):
+    """Disco finito en un plano, por centro, normal y radio."""
+    def __init__(self, center, normal, radius, material=None):
+        super().__init__(center, material)
+        n = np.array(normal, dtype=float)
+        self.normal = n / (np.linalg.norm(n) or 1.0)
+        self.radius = float(radius)
+        self.type = "Disk"
+
+    def ray_intersect(self, origin, direction):
+        denom = float(np.dot(self.normal, direction))
+        if abs(denom) < 1e-6:
+            return None
+        t = float(np.dot(self.position - origin, self.normal) / denom)
+        if t <= 1e-6:
+            return None
+        point = origin + direction * t
+        if np.linalg.norm(point - self.position) > self.radius:
+            return None
+        n = self.normal if denom < 0 else -self.normal
+        return {"t": t, "point": point, "normal": n, "material": self.material}
+
+
+class Triangle(Shape):
+    """Triángulo definido por tres vértices en espacio mundial."""
+    def __init__(self, a, b, c, material=None):
+        super().__init__((0,0,0), material)
+        self.a = np.array(a, dtype=float)
+        self.b = np.array(b, dtype=float)
+        self.c = np.array(c, dtype=float)
+        self.type = "Triangle"
+
+    def ray_intersect(self, origin, direction):
+        eps = 1e-8
+        edge1 = self.b - self.a
+        edge2 = self.c - self.a
+        h = np.cross(direction, edge2)
+        a = np.dot(edge1, h)
+        if -eps < a < eps:
+            return None
+        f = 1.0 / a
+        s = origin - self.a
+        u = f * np.dot(s, h)
+        if u < 0.0 or u > 1.0:
+            return None
+        q = np.cross(s, edge1)
+        v = f * np.dot(direction, q)
+        if v < 0.0 or u + v > 1.0:
+            return None
+        t = f * np.dot(edge2, q)
+        if t <= eps:
+            return None
+        point = origin + direction * t
+        n = np.cross(edge1, edge2)
+        nn = np.linalg.norm(n) or 1.0
+        normal = n / nn
+        if np.dot(normal, direction) > 0:
+            normal = -normal
+        return {"t": t, "point": point, "normal": normal, "material": self.material}
+
+
+class Cube(Shape):
+    """Cubo axis-aligned (AABB) por centro y tamaño (lado)."""
+    def __init__(self, center, size, material=None):
+        super().__init__(center, material)
+        self.type = "Cube"
+        h = float(size) / 2.0
+        c = self.position
+        self.min = np.array([c[0]-h, c[1]-h, c[2]-h], dtype=float)
+        self.max = np.array([c[0]+h, c[1]+h, c[2]+h], dtype=float)
+
+    def ray_intersect(self, origin, direction):
+        tmin = -np.inf
+        tmax = np.inf
+        hit_axis = -1
+        for i in range(3):
+            if abs(direction[i]) < 1e-8:
+                if origin[i] < self.min[i] or origin[i] > self.max[i]:
+                    return None
+            else:
+                invD = 1.0 / direction[i]
+                t0 = (self.min[i] - origin[i]) * invD
+                t1 = (self.max[i] - origin[i]) * invD
+                sign = 1
+                if t0 > t1:
+                    t0, t1 = t1, t0
+                    sign = -1
+                if t0 > tmin:
+                    tmin = t0
+                    hit_axis = i * sign
+                tmax = min(tmax, t1)
+                if tmax <= tmin:
+                    return None
+        if tmin <= 1e-6:
+            return None
+        point = origin + direction * tmin
+        # Normal según el axis que limitó tmin
+        normal = np.array([0.0, 0.0, 0.0])
+        axis = abs(hit_axis) // 1
+        axis = int(abs(hit_axis)) // 1
+        if abs(hit_axis) == 0:
+            normal = np.array([np.sign(hit_axis) or 1.0, 0.0, 0.0])
+        elif abs(hit_axis) == 1:
+            normal = np.array([0.0, np.sign(hit_axis) or 1.0, 0.0])
+        else:
+            normal = np.array([0.0, 0.0, np.sign(hit_axis) or 1.0])
+        if np.dot(normal, direction) > 0:
+            normal = -normal
+        return {"t": float(tmin), "point": point, "normal": normal, "material": self.material}
