@@ -17,9 +17,9 @@ OUTPUT_FILENAME: str = "output.bmp"
 OUTPUT_PATH: Path = BASE_DIR / OUTPUT_FILENAME
 
 # Ventana / resolución
-WIDTH: int = 1024
-HEIGHT: int = 1024
-WINDOW_TITLE: str = "Simple RayTracer - Esferas (Phong)"
+WIDTH: int = 256
+HEIGHT: int = 256
+WINDOW_TITLE: str = "RayTracer"
 
 # Environment map
 # Coloca aquí el nombre del archivo .hdr/.png/.jpg que exista bajo ENV_DIR
@@ -39,18 +39,18 @@ MAX_DEPTH: int | None = None  # si es int, y el Renderer lo soporta, forzar prof
 
 # Luz ambiental global (si el Renderer decide leerla)
 # Valor bajo recomendado para no sobreexponer
-AMBIENT_LIGHT: tuple[float, float, float] | None = (2.55, 2.55, 2.55)
+AMBIENT_LIGHT: tuple[float, float, float] | None = (0.15, 0.15, 0.15)
 
 # Intensidad del environment map (multiplicador antes del tone-mapping)
 ENV_INTENSITY: float | None = 0.6
 
 # Escala global para intensidades de luces puntuales
-LIGHT_INTENSITY_SCALE: float | None = 0.05
+LIGHT_INTENSITY_SCALE: float | None = 0.1
 
 # Selección de escena (placeholder para futuras extensiones)
 # "materials" usa la escena de 6 esferas en gl.Renderer._build_materials_scene
 # "default" usa la escena alternativa gl.Renderer._build_default_scene (si se cablea en el futuro)
-SCENE_PRESET: str = "room"  # opciones: "materials", "default", "room"
+SCENE_PRESET: str = "cylinders"  # opciones: "materials", "default", "room", "cylinders"
 
 # Modelos (placeholder): lista de rutas a modelos cuando exista soporte de carga
 # Por ahora no hay loader de modelos en el repo; esto es referencia futura.

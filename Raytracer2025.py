@@ -64,6 +64,9 @@ try:
             rend.restart_render()
         elif SCENE_PRESET == "room" and hasattr(rend, "_build_room_scene"):
             rend._build_room_scene()
+        elif SCENE_PRESET == "cylinders" and hasattr(rend, "_build_cylinder_scene"):
+            rend._build_cylinder_scene()
+            rend.restart_render()
 except Exception:
     pass
 

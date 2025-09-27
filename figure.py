@@ -283,3 +283,64 @@ class Cube(Shape):
         if np.dot(normal, direction) > 0:
             normal = -normal
         return {"t": float(tmin), "point": point, "normal": normal, "material": self.material}
+
+
+class Cylinder(Shape):
+    """Cilindro finito alineado al eje Y, con tapas.
+    center: (x,y,z), radius: r, height: h
+    """
+    def __init__(self, center, radius, height, material=None):
+        super().__init__(center, material)
+        self.type = "Cylinder"
+        self.radius = float(radius)
+        self.half_height = float(height) / 2.0
+
+    def ray_intersect(self, origin, direction):
+        eps = 1e-6
+        # Transformar a coords locales del cilindro (centro en 0,0,0; eje Y)
+        o = origin - self.position
+        d = direction
+
+        t_min = np.inf
+        hit = None
+
+        # Intersección con la superficie lateral: x^2 + z^2 = r^2
+        a = d[0]*d[0] + d[2]*d[2]
+        if a > eps:
+            b = 2.0 * (o[0]*d[0] + o[2]*d[2])
+            c = o[0]*o[0] + o[2]*o[2] - self.radius*self.radius
+            disc = b*b - 4.0*a*c
+            if disc >= 0.0:
+                sqrt_disc = np.sqrt(disc)
+                t0 = (-b - sqrt_disc) / (2.0*a)
+                t1 = (-b + sqrt_disc) / (2.0*a)
+                for t in (t0, t1):
+                    if t > eps:
+                        y = o[1] + t*d[1]
+                        if -self.half_height <= y <= self.half_height:
+                            if t < t_min:
+                                p = origin + direction * t
+                                # Normal lateral en local (x,0,z)
+                                n_local = np.array([p[0]-self.position[0], 0.0, p[2]-self.position[2]], dtype=float)
+                                n = n_local / (np.linalg.norm(n_local) or 1.0)
+                                if np.dot(n, direction) > 0:
+                                    n = -n
+                                hit = {"t": float(t), "point": p, "normal": n, "material": self.material}
+                                t_min = t
+
+        # Intersección con tapas (planos y = ±half_height) si el rayo no es paralelo al eje Y
+        if abs(d[1]) > eps:
+            for ycap, n_sign in ((self.half_height, 1.0), (-self.half_height, -1.0)):
+                t = (ycap - o[1]) / d[1]
+                if t > eps and t < t_min:
+                    x = o[0] + t*d[0]
+                    z = o[2] + t*d[2]
+                    if x*x + z*z <= self.radius*self.radius + 1e-8:
+                        p = origin + direction * t
+                        n = np.array([0.0, n_sign, 0.0], dtype=float)
+                        if np.dot(n, direction) > 0:
+                            n = -n
+                        hit = {"t": float(t), "point": p, "normal": n, "material": self.material}
+                        t_min = t
+
+        return hit

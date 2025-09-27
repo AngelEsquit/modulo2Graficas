@@ -4,7 +4,7 @@ import struct
 from camera import Camera
 import random
 import pygame
-from figure import Sphere, Material, Light, Mesh, Plane, Disk, Triangle, Cube
+from figure import Sphere, Material, Light, Mesh, Plane, Disk, Triangle, Cube, Cylinder
 from pathlib import Path
 
 class Renderer:
@@ -30,19 +30,19 @@ class Renderer:
         # Escena / luces / ambiente
         self.scene = []
         self.lights = []
-        self.ambientLight = (0.15, 0.15, 0.15)
+        self.ambientLight = (0.15, 0.15, 1.5)
 
         # Cámara inicial
-        self.camera.position = [0, 0, 5]
+        self.camera.position = [0, 1, 5]
 
         # Parámetros ray tracing
         self.max_depth = 3
         self.environment = None
         self.env_intensity = 1.0
-        self.light_intensity_scale = 1.0
+        self.light_intensity_scale = 5
 
-        # Construcción de escena (6 esferas)
-        self._build_materials_scene()
+        # Construcción de escena (cilindros de demostración)
+        self._build_cylinder_scene()
 
         # Intento automático de cargar un environment map si existe un archivo común
         for candidate in ["environment.jpg", "environment.png", "env.jpg", "env.png"]:
@@ -555,22 +555,11 @@ class Renderer:
         # Equirect mapping to [0,1]
         u = 0.5 + (np.arctan2(d[2], d[0]) / (2*pi))
         v = 0.5 - (np.arcsin(np.clip(d[1], -1, 1)) / pi)
-        # Bilinear sampling with horizontal wrap
-        xf = u * (self.env_w - 1)
-        yf = v * (self.env_h - 1)
-        x0 = int(np.floor(xf)) % self.env_w
-        x1 = (x0 + 1) % self.env_w
-        y0 = int(np.floor(yf))
-        y1 = min(y0 + 1, self.env_h - 1)
-        tx = xf - np.floor(xf)
-        ty = yf - np.floor(yf)
-        c00 = self.environment[y0, x0]
-        c10 = self.environment[y0, x1]
-        c01 = self.environment[y1, x0]
-        c11 = self.environment[y1, x1]
-        c0 = c00 * (1 - tx) + c10 * tx
-        c1 = c01 * (1 - tx) + c11 * tx
-        col = c0 * (1 - ty) + c1 * ty
+        # Nearest neighbor sampling with horizontal wrap
+        x = int(round(u * (self.env_w - 1))) % self.env_w
+        y = int(round(v * (self.env_h - 1)))
+        y = max(0, min(self.env_h - 1, y))
+        col = self.environment[y, x]
         # Ajuste de intensidad del environment antes del tone-mapping
         col = col * float(self.env_intensity)
         # Tone mapping (Reinhard simple)
@@ -597,6 +586,99 @@ class Renderer:
             Light((2,2,3), (1,1,1), 25),
             Light((-3,1,2), (1,0.95,0.9), 15)
         ]
+
+    def _build_cylinder_scene(self):
+        # Materiales
+        white = Material((0.85,0.85,0.85), ka=0.2, kd=0.7, ks=0.2, shininess=32)
+        bone = Material((0.94,0.92,0.86), ka=0.2, kd=0.7, ks=0.2, shininess=32)
+        red = Material((0.9,0.3,0.3), ka=0.15, kd=0.7, ks=0.2, shininess=32)
+        green = Material((0.3,0.9,0.3), ka=0.15, kd=0.7, ks=0.2, shininess=32)
+        mirror = Material((1.0,1.0,1.0), ka=0.0, kd=0.0, ks=1.0, shininess=256, reflectivity=1.0, mtype='reflective')
+        polished_floor = Material((0.88,0.88,0.88), ka=0.15, kd=0.58, ks=0.42, shininess=160, reflectivity=0.20, mtype='reflective')
+        # Cilindros
+        opaque = Material((0.9,0.4,0.2), ka=0.2, kd=0.7, ks=0.25, shininess=48, mtype='opaque')
+        glass  = Material((0.7,0.95,1.0), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent')
+
+        # Habitación con paredes y piso (y techo y pared trasera de cámara)
+        self.scene = [
+            Plane((0,-2,0), (0,1,0), polished_floor),   # Piso
+            Plane((0, 2,0), (0,-1,0), white),           # Techo
+            Plane((0,0,-4), (0,0,1), white),            # Pared de fondo
+            Plane((-3,0,0), (1,0,0), red),              # Pared izquierda
+            Plane(( 3,0,0), (-1,0,0), green),           # Pared derecha
+            Plane((0,0, 6), (0,0,-1), bone),            # Pared detrás de la cámara
+        ]
+
+        # Espejos rectangulares en paredes laterales (dos triángulos por panel)
+        h = 2.6
+        y0 = -h/2
+        y1 = h/2
+        w = 0.968
+        zc = -3.2
+        z0 = zc - w/2
+        z1 = zc + w/2
+        theta = np.deg2rad(38.0)
+
+        def rotY(p, C, ang):
+            px, py, pz = p
+            cx, cy, cz = C
+            dx = px - cx
+            dz = pz - cz
+            cosA = np.cos(ang)
+            sinA = np.sin(ang)
+            rx = cx + dx * cosA + dz * sinA
+            rz = cz + (-dx * sinA + dz * cosA)
+            return (float(rx), float(py), float(rz))
+
+        # Panel espejo en pared izquierda
+        offset_l = (w/2) * float(np.sin(theta)) + 0.02
+        xl_center = -3 + offset_l
+        Cl = (xl_center, 0.0, zc)
+        lp0 = (xl_center, y0, z0)
+        lp1 = (xl_center, y1, z0)
+        lp2 = (xl_center, y1, z1)
+        lp3 = (xl_center, y0, z1)
+        angL = -theta
+        p0 = rotY(lp0, Cl, angL)
+        p1 = rotY(lp1, Cl, angL)
+        p2 = rotY(lp2, Cl, angL)
+        p3 = rotY(lp3, Cl, angL)
+        self.scene += [
+            Triangle(p0, p1, p2, mirror),
+            Triangle(p0, p2, p3, mirror)
+        ]
+
+        # Panel espejo en pared derecha
+        offset_r = (w/2) * float(np.sin(theta)) + 0.02
+        xr_center = 3 - offset_r
+        Cr = (xr_center, 0.0, zc)
+        rq0 = (xr_center, y0, z0)
+        rq1 = (xr_center, y1, z0)
+        rq2 = (xr_center, y1, z1)
+        rq3 = (xr_center, y0, z1)
+        angR = +theta
+        q0 = rotY(rq0, Cr, angR)
+        q1 = rotY(rq1, Cr, angR)
+        q2 = rotY(rq2, Cr, angR)
+        q3 = rotY(rq3, Cr, angR)
+        self.scene += [
+            Triangle(q0, q1, q2, mirror),
+            Triangle(q0, q2, q3, mirror)
+        ]
+
+        # Tres cilindros dentro del cuarto
+        self.scene += [
+            Cylinder((-1.4, -1.0, -1.2), 0.35, 1.2, opaque),
+            Cylinder(( 0.0, -1.2, -1.8), 0.40, 1.4, mirror),
+            Cylinder(( 1.4, -0.9, -1.0), 0.30, 1.0, glass),
+        ]
+
+        # Luces
+        self.lights = [
+            Light((0,1.8,-1.0), (1,1,1), 60),
+            Light((-2,1.0,-0.5), (1,0.95,0.9), 25)
+        ]
+        # No llamar restart_render aquí; __init__ o el preset lo harán
 
     def _build_materials_scene(self):
         opaque_red = Material((0.9,0.2,0.2), ka=0.2, kd=0.7, ks=0.3, shininess=32, mtype='opaque')
