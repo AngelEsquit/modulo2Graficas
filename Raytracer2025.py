@@ -2,7 +2,7 @@ import pygame
 from pygame.locals import *
 from gl import Renderer
 from BMP_Writer import GenerateBMP
-from config import WIDTH, HEIGHT, WINDOW_TITLE, env_path, OUTPUT_PATH, CAMERA_POSITION, PIXELS_PER_FRAME, MAX_DEPTH, AMBIENT_LIGHT, SCENE_PRESET, MODELS, ENV_INTENSITY, LIGHT_INTENSITY_SCALE
+from config import WIDTH, HEIGHT, WINDOW_TITLE, env_path, OUTPUT_PATH, CAMERA_POSITION, CAMERA_ROTATION, PIXELS_PER_FRAME, MAX_DEPTH, AMBIENT_LIGHT, SCENE_PRESET, MODELS, ENV_INTENSITY, LIGHT_INTENSITY_SCALE
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
@@ -14,6 +14,11 @@ rend = Renderer(screen)
 try:
     # Cámara inicial
     rend.camera.position = list(CAMERA_POSITION)
+    # Rotación inicial (pitch, yaw, roll)
+    if hasattr(rend.camera, 'set_rotation'):
+        rend.camera.set_rotation(*CAMERA_ROTATION)
+    else:
+        rend.camera.rotation = list(CAMERA_ROTATION)
 except Exception:
     pass
 
@@ -66,6 +71,12 @@ try:
             rend._build_room_scene()
         elif SCENE_PRESET == "cylinders" and hasattr(rend, "_build_cylinder_scene"):
             rend._build_cylinder_scene()
+            rend.restart_render()
+        elif SCENE_PRESET == "cones" and hasattr(rend, "_build_cone_scene"):
+            rend._build_cone_scene()
+            rend.restart_render()
+        elif SCENE_PRESET == "tori" and hasattr(rend, "_build_torus_scene"):
+            rend._build_torus_scene()
             rend.restart_render()
 except Exception:
     pass

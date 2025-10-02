@@ -1,4 +1,4 @@
-# Laboratorio 7
+# Laboratorio 8
 
 ## Ejecución
 Para ejecutar el raytracer, corre el archivo `Raytracer2025.py`.

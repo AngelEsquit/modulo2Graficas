@@ -4,8 +4,9 @@ import struct
 from camera import Camera
 import random
 import pygame
-from figure import Sphere, Material, Light, Mesh, Plane, Disk, Triangle, Cube, Cylinder
+from figure import Sphere, Material, Light, Mesh, Plane, Disk, Triangle, Cube, Cylinder, Cone, Torus
 from pathlib import Path
+from MathLib import RotationMatrix
 
 class Renderer:
     def __init__(self, screen):
@@ -38,7 +39,7 @@ class Renderer:
         # Parámetros ray tracing
         self.max_depth = 3
         self.environment = None
-        self.env_intensity = 1.0
+        self.env_intensity = 1.5
         self.light_intensity_scale = 5
 
         # Construcción de escena (cilindros de demostración)
@@ -150,7 +151,7 @@ class Renderer:
         z0 = zc - w/2
         z1 = zc + w/2
         # ángulo de rotación alrededor de Y
-        theta = np.deg2rad(38.0)
+        theta = np.deg2rad(42.0)
 
         # Helper para rotación Y alrededor de un pivote C (mantiene y)
         def rotY(p, C, ang):
@@ -315,6 +316,14 @@ class Renderer:
 
         batch = self.pixels_per_frame
         origin = np.array(self.camera.position, dtype=float)
+        # Precalcular rotación de cámara (3x3) para transformar rayos a espacio mundo
+        try:
+            R = RotationMatrix(self.camera.rotation[0], self.camera.rotation[1], self.camera.rotation[2])
+            R3 = np.array([[R[0,0], R[0,1], R[0,2]],
+                           [R[1,0], R[1,1], R[1,2]],
+                           [R[2,0], R[2,1], R[2,2]]], dtype=float)
+        except Exception:
+            R3 = np.identity(3, dtype=float)
         processed = 0
         while self.random_pixels and processed < batch:
             x, y = self.random_pixels.pop()  # pop desde el final (lista ya mezclada)
@@ -323,7 +332,9 @@ class Renderer:
             pX *= self.rightEdge
             pY *= self.topEdge
             pZ = -self.nearPlane
-            direction = np.array([pX, pY, pZ], dtype=float)
+            # Direccion en espacio de cámara -> transformar por rotación de cámara a mundo
+            d_cam = np.array([pX, pY, pZ], dtype=float)
+            direction = R3 @ d_cam
             direction /= np.linalg.norm(direction) or 1
             hit = self.glCastRay(origin, direction)
             if hit:
@@ -409,7 +420,10 @@ class Renderer:
                 if Tw > 0.0:
                     tdir = eta * direction + (eta * cosi - sqrt(k)) * n
                     refract_col = self._trace_ray(point - n * 1e-4, tdir, depth + 1)
-                    refract_col = refract_col * base_color
+                    # Atenuar tinte de transmisión usando tint_strength (0=sin tinte, 1=tinte completo)
+                    ts = getattr(material, 'tint_strength', 1.0)
+                    tint = ts * base_color + (1.0 - ts) * np.array((1.0, 1.0, 1.0))
+                    refract_col = refract_col * tint
         else:
             base_weight = 1.0
 
@@ -597,7 +611,7 @@ class Renderer:
         polished_floor = Material((0.88,0.88,0.88), ka=0.15, kd=0.58, ks=0.42, shininess=160, reflectivity=0.20, mtype='reflective')
         # Cilindros
         opaque = Material((0.9,0.4,0.2), ka=0.2, kd=0.7, ks=0.25, shininess=48, mtype='opaque')
-        glass  = Material((0.7,0.95,1.0), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent')
+        glass  = Material((0.7,0.95,1.0), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent', tint_strength=0.6)
 
         # Habitación con paredes y piso (y techo y pared trasera de cámara)
         self.scene = [
@@ -617,7 +631,7 @@ class Renderer:
         zc = -3.2
         z0 = zc - w/2
         z1 = zc + w/2
-        theta = np.deg2rad(38.0)
+        theta = np.deg2rad(42.0)
 
         def rotY(p, C, ang):
             px, py, pz = p
@@ -667,11 +681,29 @@ class Renderer:
         ]
 
         # Tres cilindros dentro del cuarto
-        self.scene += [
-            Cylinder((-1.4, -1.0, -1.2), 0.35, 1.2, opaque),
-            Cylinder(( 0.0, -1.2, -1.8), 0.40, 1.4, mirror),
-            Cylinder(( 1.4, -0.9, -1.0), 0.30, 1.0, glass),
-        ]
+        c1 = Cylinder((-1.4, -1.0, -1.2), 0.35, 1.2, opaque)
+        c2 = Cylinder(( 0.0, -1.2, -1.8), 0.40, 1.4, mirror)
+        c3 = Cylinder(( 1.4, -0.9, -1.0), 0.30, 1.0, glass)
+        self.scene += [c1, c2, c3]
+
+        # Toroides colocados arriba de cada cilindro
+        gap = 0.02
+        # c1 top y (elevar por radio externo R+r)
+        c1_top = c1.position[1] + c1.half_height
+        t1_R, t1_r = c1.radius + 0.01, 0.12
+        t1_y = c1_top + (t1_R + t1_r) + gap
+        t1 = Torus((c1.position[0], t1_y + 0.3, c1.position[2]), t1_R, t1_r, opaque, rotation_euler=(90.0, 0.0, 0.0))
+        # c2
+        c2_top = c2.position[1] + c2.half_height
+        t2_R, t2_r = c2.radius + 0.02, 0.13
+        t2_y = c2_top + (t2_R + t2_r) + gap
+        t2 = Torus((c2.position[0], t2_y + 0.3, c2.position[2]), t2_R, t2_r, mirror, rotation_euler=(90.0, 0.0, 0.0))
+        # c3
+        c3_top = c3.position[1] + c3.half_height
+        t3_R, t3_r = c3.radius + 0.02, 0.11
+        t3_y = c3_top + (t3_R + t3_r) + gap
+        t3 = Torus((c3.position[0], t3_y + 0.3, c3.position[2]), t3_R, t3_r, glass, rotation_euler=(90.0, 0.0, 0.0))
+        self.scene += [t1, t2, t3]
 
         # Luces
         self.lights = [
@@ -686,8 +718,8 @@ class Renderer:
         refl_chrome = Material((0.8,0.8,0.85), ka=0.05, kd=0.1, ks=0.9, shininess=128, reflectivity=0.8, mtype='reflective')
         refl_gold = Material((0.9,0.75,0.3), ka=0.05, kd=0.25, ks=0.8, shininess=96, reflectivity=0.6, mtype='reflective')
         # Transparent materials with distinct tint colors
-        transp_glass = Material((0.15,0.85,0.75), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent')  # teal
-        transp_blue = Material((0.85,0.25,0.7), ka=0.05, kd=0.05, ks=0.8, shininess=96, transparency=0.7, ior=1.33, mtype='transparent')   # magenta
+        transp_glass = Material((0.15,0.85,0.75), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent', tint_strength=0.6)  # teal
+        transp_blue = Material((0.85,0.25,0.7), ka=0.05, kd=0.05, ks=0.8, shininess=96, transparency=0.7, ior=1.33, mtype='transparent', tint_strength=0.6)   # magenta
         # Ajustadas posiciones y radios para dejar espacios y permitir ver el HDR entre esferas
         self.scene = [
             Sphere((-2.4,  0.9, -1.2), 0.45, opaque_red),      # Opaque 1
@@ -700,6 +732,190 @@ class Renderer:
         self.lights = [
             Light((3,5,5), (1,1,1), 45),
             Light((-4,3,4), (1,0.95,0.9), 25)
+        ]
+
+    def _build_cone_scene(self):
+        # Materiales base del cuarto
+        white = Material((0.85,0.85,0.85), ka=0.2, kd=0.7, ks=0.2, shininess=32)
+        bone = Material((0.94,0.92,0.86), ka=0.2, kd=0.7, ks=0.2, shininess=32)
+        red = Material((0.9,0.3,0.3), ka=0.15, kd=0.7, ks=0.2, shininess=32)
+        green = Material((0.3,0.9,0.3), ka=0.15, kd=0.7, ks=0.2, shininess=32)
+        mirror = Material((1.0,1.0,1.0), ka=0.0, kd=0.0, ks=1.0, shininess=256, reflectivity=1.0, mtype='reflective')
+        polished_floor = Material((0.88,0.88,0.88), ka=0.15, kd=0.58, ks=0.42, shininess=160, reflectivity=0.20, mtype='reflective')
+
+        # Conos materiales
+        opaque = Material((0.95,0.55,0.25), ka=0.2, kd=0.7, ks=0.25, shininess=48, mtype='opaque')
+        glass  = Material((0.7,0.95,1.0), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent', tint_strength=0.6)
+
+        # Habitación
+        self.scene = [
+            Plane((0,-2,0), (0,1,0), polished_floor),   # Piso
+            Plane((0, 2,0), (0,-1,0), white),           # Techo
+            Plane((0,0,-4), (0,0,1), white),            # Pared de fondo
+            Plane((-3,0,0), (1,0,0), red),              # Pared izquierda
+            Plane(( 3,0,0), (-1,0,0), green),           # Pared derecha
+            Plane((0,0, 6), (0,0,-1), bone),            # Pared detrás de la cámara
+        ]
+
+        # Espejos laterales (reutiliza lógica del cuarto)
+        h = 2.6
+        y0 = -h/2
+        y1 = h/2
+        w = 0.968
+        zc = -3.2
+        z0 = zc - w/2
+        z1 = zc + w/2
+        theta = np.deg2rad(38.0)
+
+        def rotY(p, C, ang):
+            px, py, pz = p
+            cx, cy, cz = C
+            dx = px - cx
+            dz = pz - cz
+            cosA = np.cos(ang)
+            sinA = np.sin(ang)
+            rx = cx + dx * cosA + dz * sinA
+            rz = cz + (-dx * sinA + dz * cosA)
+            return (float(rx), float(py), float(rz))
+
+        # Izquierda
+        offset_l = (w/2) * float(np.sin(theta)) + 0.02
+        xl_center = -3 + offset_l
+        Cl = (xl_center, 0.0, zc)
+        lp0 = (xl_center, y0, z0)
+        lp1 = (xl_center, y1, z0)
+        lp2 = (xl_center, y1, z1)
+        lp3 = (xl_center, y0, z1)
+        angL = -theta
+        p0 = rotY(lp0, Cl, angL)
+        p1 = rotY(lp1, Cl, angL)
+        p2 = rotY(lp2, Cl, angL)
+        p3 = rotY(lp3, Cl, angL)
+        self.scene += [
+            Triangle(p0, p1, p2, mirror),
+            Triangle(p0, p2, p3, mirror)
+        ]
+
+        # Derecha
+        offset_r = (w/2) * float(np.sin(theta)) + 0.02
+        xr_center = 3 - offset_r
+        Cr = (xr_center, 0.0, zc)
+        rq0 = (xr_center, y0, z0)
+        rq1 = (xr_center, y1, z0)
+        rq2 = (xr_center, y1, z1)
+        rq3 = (xr_center, y0, z1)
+        angR = +theta
+        q0 = rotY(rq0, Cr, angR)
+        q1 = rotY(rq1, Cr, angR)
+        q2 = rotY(rq2, Cr, angR)
+        q3 = rotY(rq3, Cr, angR)
+        self.scene += [
+            Triangle(q0, q1, q2, mirror),
+            Triangle(q0, q2, q3, mirror)
+        ]
+
+        # Tres conos
+        self.scene += [
+            Cone((-1.4, -1.0, -1.2), 0.5, 1.6, opaque),
+            Cone(( 0.0, -1.2, -1.8), 0.55, 1.8, mirror),
+            Cone(( 1.4, -0.9, -1.0), 0.45, 1.4, glass),
+        ]
+
+        # Luces
+        self.lights = [
+            Light((0,1.8,-1.0), (1,1,1), 60),
+            Light((-2,1.0,-0.5), (1,0.95,0.9), 25)
+        ]
+
+    def _build_torus_scene(self):
+        # Materiales base del cuarto
+        white = Material((0.85,0.85,0.85), ka=0.2, kd=0.7, ks=0.2, shininess=32)
+        bone = Material((0.94,0.92,0.86), ka=0.2, kd=0.7, ks=0.2, shininess=32)
+        red = Material((0.9,0.3,0.3), ka=0.15, kd=0.7, ks=0.2, shininess=32)
+        green = Material((0.3,0.9,0.3), ka=0.15, kd=0.7, ks=0.2, shininess=32)
+        mirror = Material((1.0,1.0,1.0), ka=0.0, kd=0.0, ks=1.0, shininess=256, reflectivity=1.0, mtype='reflective')
+        polished_floor = Material((0.88,0.88,0.88), ka=0.15, kd=0.58, ks=0.42, shininess=160, reflectivity=0.20, mtype='reflective')
+
+        # Tori materiales
+        opaque = Material((0.9,0.4,0.2), ka=0.2, kd=0.7, ks=0.25, shininess=48, mtype='opaque')
+        glass  = Material((0.7,0.95,1.0), ka=0.05, kd=0.05, ks=0.9, shininess=128, transparency=0.8, ior=1.5, mtype='transparent', tint_strength=0.6)
+
+        # Habitación
+        self.scene = [
+            Plane((0,-2,0), (0,1,0), polished_floor),   # Piso
+            Plane((0, 2,0), (0,-1,0), white),           # Techo
+            Plane((0,0,-4), (0,0,1), white),            # Pared de fondo
+            Plane((-3,0,0), (1,0,0), red),              # Pared izquierda
+            Plane(( 3,0,0), (-1,0,0), green),           # Pared derecha
+            Plane((0,0, 6), (0,0,-1), bone),            # Pared detrás de la cámara
+        ]
+
+        # Espejos laterales
+        h = 2.6
+        y0 = -h/2
+        y1 = h/2
+        w = 0.968
+        zc = -3.2
+        z0 = zc - w/2
+        z1 = zc + w/2
+        theta = np.deg2rad(38.0)
+
+        def rotY(p, C, ang):
+            px, py, pz = p
+            cx, cy, cz = C
+            dx = px - cx
+            dz = pz - cz
+            cosA = np.cos(ang)
+            sinA = np.sin(ang)
+            rx = cx + dx * cosA + dz * sinA
+            rz = cz + (-dx * sinA + dz * cosA)
+            return (float(rx), float(py), float(rz))
+
+        offset_l = (w/2) * float(np.sin(theta)) + 0.02
+        xl_center = -3 + offset_l
+        Cl = (xl_center, 0.0, zc)
+        lp0 = (xl_center, y0, z0)
+        lp1 = (xl_center, y1, z0)
+        lp2 = (xl_center, y1, z1)
+        lp3 = (xl_center, y0, z1)
+        angL = -theta
+        p0 = rotY(lp0, Cl, angL)
+        p1 = rotY(lp1, Cl, angL)
+        p2 = rotY(lp2, Cl, angL)
+        p3 = rotY(lp3, Cl, angL)
+        self.scene += [
+            Triangle(p0, p1, p2, mirror),
+            Triangle(p0, p2, p3, mirror)
+        ]
+
+        offset_r = (w/2) * float(np.sin(theta)) + 0.02
+        xr_center = 3 - offset_r
+        Cr = (xr_center, 0.0, zc)
+        rq0 = (xr_center, y0, z0)
+        rq1 = (xr_center, y1, z0)
+        rq2 = (xr_center, y1, z1)
+        rq3 = (xr_center, y0, z1)
+        angR = +theta
+        q0 = rotY(rq0, Cr, angR)
+        q1 = rotY(rq1, Cr, angR)
+        q2 = rotY(rq2, Cr, angR)
+        q3 = rotY(rq3, Cr, angR)
+        self.scene += [
+            Triangle(q0, q1, q2, mirror),
+            Triangle(q0, q2, q3, mirror)
+        ]
+
+        # Tres toroides
+        self.scene += [
+            Torus((-1.4, -0.6, -1.2), 0.6, 0.18, opaque),
+            Torus(( 0.0, -0.8, -1.8), 0.7, 0.20, mirror),
+            Torus(( 1.4, -0.5, -1.0), 0.55, 0.16, glass),
+        ]
+
+        # Luces
+        self.lights = [
+            Light((0,1.8,-1.0), (1,1,1), 60),
+            Light((-2,1.0,-0.5), (1,0.95,0.9), 25)
         ]
 
     # -------------------- Render progresivo helpers --------------------

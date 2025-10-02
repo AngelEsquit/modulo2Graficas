@@ -17,8 +17,8 @@ OUTPUT_FILENAME: str = "output.bmp"
 OUTPUT_PATH: Path = BASE_DIR / OUTPUT_FILENAME
 
 # Ventana / resolución
-WIDTH: int = 256
-HEIGHT: int = 256
+WIDTH: int = 1366
+HEIGHT: int = 768
 WINDOW_TITLE: str = "RayTracer"
 
 # Environment map
@@ -30,8 +30,8 @@ WINDOW_TITLE: str = "RayTracer"
 ENVIRONMENT_MAP: str = ""
 
 # Cámara inicial
-CAMERA_POSITION: tuple[float, float, float] = (0.0, 0.0, 5.0)
-CAMERA_ROTATION: tuple[float, float, float] = (0.0, 0.0, 0.0)  # pitch, yaw, roll en grados
+CAMERA_POSITION: tuple[float, float, float] = (0.0, 0.8, 5.0)
+CAMERA_ROTATION: tuple[float, float, float] = (-8.0, 0.0, 0.0)  # pitch, yaw, roll en grados
 
 # Render progresivo
 PIXELS_PER_FRAME: int = 4000  # mayor valor = converge más rápido, pero consume más CPU por frame
@@ -39,13 +39,13 @@ MAX_DEPTH: int | None = None  # si es int, y el Renderer lo soporta, forzar prof
 
 # Luz ambiental global (si el Renderer decide leerla)
 # Valor bajo recomendado para no sobreexponer
-AMBIENT_LIGHT: tuple[float, float, float] | None = (0.15, 0.15, 0.15)
+AMBIENT_LIGHT: tuple[float, float, float] | None = (0.65, 0.65, 0.65)
 
 # Intensidad del environment map (multiplicador antes del tone-mapping)
 ENV_INTENSITY: float | None = 0.6
 
 # Escala global para intensidades de luces puntuales
-LIGHT_INTENSITY_SCALE: float | None = 0.1
+LIGHT_INTENSITY_SCALE: float | None = 0.15
 
 # Selección de escena (placeholder para futuras extensiones)
 # "materials" usa la escena de 6 esferas en gl.Renderer._build_materials_scene
