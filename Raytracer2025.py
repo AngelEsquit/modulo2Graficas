@@ -55,17 +55,29 @@ try:
 except Exception:
     pass
 
-# Si hay modelos en config, construir escena desde ellos; de lo contrario usar preset
+# Construcción de escena - NUEVO SISTEMA IMPLEMENTADO PARA EL PROYECTO
 try:
     if MODELS:
+        # Si hay modelos OBJ especificados en config, cargarlos
+        print("Loading OBJ models from config...")
         if hasattr(rend, 'build_scene_from_models'):
             rend.build_scene_from_models(MODELS)
     else:
-        if SCENE_PRESET == "default" and hasattr(rend, "_build_default_scene"):
+        # Usar el preset de escena especificado
+        print(f"Building scene preset: {SCENE_PRESET}")
+        
+        # NUEVAS ESCENAS PARA EL PROYECTO
+        if SCENE_PRESET in ["materials", "geometry", "complex", "artistic", "basketball"]:
+            if hasattr(rend, 'build_advanced_scene'):
+                rend.build_advanced_scene(SCENE_PRESET)
+            else:
+                print("Advanced scenes not available, using fallback")
+                rend._build_default_scene()
+                rend.restart_render()
+        
+        # ESCENAS ORIGINALES (compatibilidad)
+        elif SCENE_PRESET == "default" and hasattr(rend, "_build_default_scene"):
             rend._build_default_scene()
-            rend.restart_render()
-        elif SCENE_PRESET == "materials" and hasattr(rend, "_build_materials_scene"):
-            rend._build_materials_scene()
             rend.restart_render()
         elif SCENE_PRESET == "room" and hasattr(rend, "_build_room_scene"):
             rend._build_room_scene()
@@ -78,8 +90,25 @@ try:
         elif SCENE_PRESET == "tori" and hasattr(rend, "_build_torus_scene"):
             rend._build_torus_scene()
             rend.restart_render()
-except Exception:
-    pass
+        else:
+            # Fallback a escena compleja si no se reconoce el preset
+            print(f"Unknown preset '{SCENE_PRESET}', using complex scene")
+            if hasattr(rend, 'build_advanced_scene'):
+                rend.build_advanced_scene("complex")
+            else:
+                rend._build_default_scene()
+                rend.restart_render()
+                
+    print("Scene construction completed!")
+    
+except Exception as e:
+    print(f"Error during scene construction: {e}")
+    print("Using fallback default scene")
+    try:
+        rend._build_default_scene()
+        rend.restart_render()
+    except:
+        pass
 
 isRunning = True
 while isRunning:

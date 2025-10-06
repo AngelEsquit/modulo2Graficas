@@ -8,6 +8,20 @@ from figure import Sphere, Material, Light, Mesh, Plane, Disk, Triangle, Cube, C
 from pathlib import Path
 from MathLib import RotationMatrix
 
+# Importar nuevas funcionalidades del proyecto
+try:
+    from advanced_materials import AdvancedMaterial, MaterialPresets
+    from texture import ImageTexture, ProceduralTexture, NormalMap
+    from lighting import PointLight, DirectionalLight, SpotLight, AreaLight, LightManager
+    from advanced_shapes import Ellipsoid, Capsule, Octahedron, Hyperboloid, Paraboloid, Dodecahedron
+    from obj_loader import OBJLoader, AdvancedMesh
+    from scene_builder import build_scene_from_preset
+    ADVANCED_FEATURES_AVAILABLE = True
+    print("Advanced raytracer features loaded successfully!")
+except ImportError as e:
+    print(f"Warning: Some advanced features not available: {e}")
+    ADVANCED_FEATURES_AVAILABLE = False
+
 class Renderer:
     def __init__(self, screen):
         # Pantalla y dimensiones
@@ -58,34 +72,121 @@ class Renderer:
         self.glClear()
         self._init_progressive_render()
 
-    # Construcción de escena desde modelos en config
+    # === NUEVOS MÉTODOS PARA EL PROYECTO ===
+    
+    def build_advanced_scene(self, preset_name="complex"):
+        """Construye escena avanzada usando el nuevo sistema (PROYECTO FINAL)"""
+        if not ADVANCED_FEATURES_AVAILABLE:
+            print("Advanced features not available, falling back to default scene")
+            self._build_default_scene()
+            return
+        
+        try:
+            print(f"Building advanced scene: {preset_name}")
+            build_scene_from_preset(self, preset_name)
+            self.restart_render()
+            print("Advanced scene built successfully!")
+        except Exception as e:
+            print(f"Error building advanced scene: {e}")
+            print("Falling back to default scene")
+            self._build_default_scene()
+    
+    def load_obj_model(self, filepath, scale=1.0, position=(0, 0, 0), rotation=(0, 0, 0), material=None):
+        """Carga un modelo OBJ y lo añade a la escena"""
+        if not ADVANCED_FEATURES_AVAILABLE:
+            print("OBJ loading not available")
+            return False
+        
+        try:
+            loader = OBJLoader()
+            meshes = loader.load_obj(filepath, scale, position, rotation)
+            
+            for mesh in meshes:
+                if material:
+                    mesh.material = material
+                self.scene.append(mesh)
+            
+            print(f"Loaded OBJ model: {filepath} ({len(meshes)} meshes)")
+            return True
+        except Exception as e:
+            print(f"Error loading OBJ model {filepath}: {e}")
+            return False
+    
+    # Construcción de escena desde modelos en config (MEJORADO)
     def build_scene_from_models(self, models: list[dict]):
         self.scene = []
-        for m in models:
-            try:
-                path = m.get('path')
-                if path is None:
+        
+        # Intentar usar el nuevo sistema OBJ si está disponible
+        if ADVANCED_FEATURES_AVAILABLE:
+            for m in models:
+                try:
+                    path = m.get('path')
+                    if path is None:
+                        continue
+                    
+                    # Crear material avanzado si está disponible
+                    mat_cfg = m.get('material', {})
+                    if 'AdvancedMaterial' in globals():
+                        material = AdvancedMaterial(
+                            color=tuple(mat_cfg.get('color', (0.8, 0.8, 0.8))),
+                            ka=float(mat_cfg.get('ka', 0.1)),
+                            kd=float(mat_cfg.get('kd', 0.7)),
+                            ks=float(mat_cfg.get('ks', 0.2)),
+                            shininess=int(mat_cfg.get('shininess', 32)),
+                            reflectivity=float(mat_cfg.get('reflectivity', 0.0)),
+                            transparency=float(mat_cfg.get('transparency', 0.0)),
+                            ior=float(mat_cfg.get('ior', 1.5))
+                        )
+                    else:
+                        material = Material(
+                            color=tuple(mat_cfg.get('color', (0.8, 0.8, 0.8))),
+                            ka=float(mat_cfg.get('ka', 0.1)),
+                            kd=float(mat_cfg.get('kd', 0.7)),
+                            ks=float(mat_cfg.get('ks', 0.2)),
+                            shininess=float(mat_cfg.get('shininess', 32)),
+                            reflectivity=float(mat_cfg.get('reflectivity', 0.0)),
+                            transparency=float(mat_cfg.get('transparency', 0.0)),
+                            ior=float(mat_cfg.get('ior', 1.5))
+                        )
+                    
+                    pos = tuple(m.get('position', (0, 0, 0)))
+                    rot = tuple(m.get('rotation', (0, 0, 0)))
+                    scl = m.get('scale', 1.0)
+                    
+                    # Usar el nuevo cargador
+                    success = self.load_obj_model(path, scl, pos, rot, material)
+                    if not success:
+                        print(f"Failed to load {path}, skipping...")
+                    
+                except Exception as e:
+                    print(f"Error processing model config: {e}")
                     continue
-                mat_cfg = m.get('material', {})
-                mat = Material(
-                    color=tuple(mat_cfg.get('color', (0.8,0.8,0.8))),
-                    ka=float(mat_cfg.get('ka', 0.1)),
-                    kd=float(mat_cfg.get('kd', 0.7)),
-                    ks=float(mat_cfg.get('ks', 0.2)),
-                    shininess=float(mat_cfg.get('shininess', 32)),
-                    reflectivity=float(mat_cfg.get('reflectivity', 0.0)),
-                    transparency=float(mat_cfg.get('transparency', 0.0)),
-                    ior=float(mat_cfg.get('ior', 1.5)),
-                    mtype='opaque' if (mat_cfg.get('transparency', 0.0) <= 0 and mat_cfg.get('reflectivity', 0.0) <= 0) else (
-                        'transparent' if mat_cfg.get('transparency', 0.0) > 0 else 'reflective')
-                )
-                pos = tuple(m.get('position', (0,0,0)))
-                rot = tuple(m.get('rotation', (0,0,0)))
-                scl = tuple(m.get('scale', (1,1,1)))
-                mesh = Mesh.from_obj(path, material=mat, position=pos, rotation=rot, scale=scl)
-                self.scene.append(mesh)
-            except Exception:
-                continue
+        else:
+            # Fallback al sistema original
+            for m in models:
+                try:
+                    path = m.get('path')
+                    if path is None:
+                        continue
+                    mat_cfg = m.get('material', {})
+                    mat = Material(
+                        color=tuple(mat_cfg.get('color', (0.8,0.8,0.8))),
+                        ka=float(mat_cfg.get('ka', 0.1)),
+                        kd=float(mat_cfg.get('kd', 0.7)),
+                        ks=float(mat_cfg.get('ks', 0.2)),
+                        shininess=float(mat_cfg.get('shininess', 32)),
+                        reflectivity=float(mat_cfg.get('reflectivity', 0.0)),
+                        transparency=float(mat_cfg.get('transparency', 0.0)),
+                        ior=float(mat_cfg.get('ior', 1.5))
+                    )
+                    pos = tuple(m.get('position', (0,0,0)))
+                    rot = tuple(m.get('rotation', (0,0,0)))
+                    scl = tuple(m.get('scale', (1,1,1)))
+                    mesh = Mesh.from_obj(path, material=mat, position=pos, rotation=rot, scale=scl)
+                    self.scene.append(mesh)
+                except Exception:
+                    continue
+        
         # Luces por defecto si no se configuran externamente
         if not self.lights:
             self.lights = [
@@ -364,19 +465,33 @@ class Renderer:
         ambient = np.array(self.ambientLight) * material.ka * base_color
         local = ambient
 
-        # Iluminación directa (Phong)
+        # Iluminación directa (Phong) - COMPATIBLE CON NUEVOS TIPOS DE LUCES
         for light in self.lights:
-            L = light.position - point
-            dist = np.linalg.norm(L) or 1
-            L /= dist
+            # Manejar diferentes tipos de luces
+            if hasattr(light, 'get_light_direction') and hasattr(light, 'get_light_intensity'):
+                # Nueva clase de luz avanzada
+                L = light.get_light_direction(point)
+                dist = light.get_distance(point)
+                light_color = light.get_light_intensity(point) * self.light_intensity_scale
+            else:
+                # Luz original (compatibilidad)
+                L = light.position - point
+                dist = np.linalg.norm(L) or 1
+                L /= dist
+                light_color = (light.color * light.intensity * self.light_intensity_scale) / (dist * dist)
+            
+            # Verificar que L está normalizado
+            L = L / (np.linalg.norm(L) + 1e-8)
+            
             # Sombra (ocluido si hay intersección antes de la luz)
-            shadow_hit = self.glCastRay(point + normal * 1e-4, L, max_distance=dist - 1e-3)
+            shadow_distance = dist - 1e-3 if dist != float('inf') else 1e6
+            shadow_hit = self.glCastRay(point + normal * 1e-4, L, max_distance=shadow_distance)
             if shadow_hit:
                 continue
+            
             diff = max(0.0, np.dot(normal, L))
             reflect_dir = 2 * np.dot(normal, L) * normal - L
             spec = max(0.0, np.dot(reflect_dir, view_dir)) ** material.shininess
-            light_color = (light.color * light.intensity * self.light_intensity_scale) / (dist * dist)
             local += light_color * (material.kd * diff * base_color + material.ks * spec)
 
         local = np.clip(local, 0, 1)
