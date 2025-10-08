@@ -17,8 +17,8 @@ OUTPUT_FILENAME: str = "output.bmp"
 OUTPUT_PATH: Path = BASE_DIR / OUTPUT_FILENAME
 
 # Ventana / resolución
-WIDTH: int = 256
-HEIGHT: int = 256
+WIDTH: int = 300
+HEIGHT: int = 300
 WINDOW_TITLE: str = "RayTracer"
 
 # Environment map
@@ -30,8 +30,19 @@ WINDOW_TITLE: str = "RayTracer"
 ENVIRONMENT_MAP: str = ""
 
 # Cámara inicial
-CAMERA_POSITION: tuple[float, float, float] = (0.0, 4.0, 5.5)
-CAMERA_ROTATION: tuple[float, float, float] = (-15.0, 0.0, 0.0)  # pitch, yaw, roll en grados
+CAMERA_PRESET: str = "cancha" # "centro", "canasta", "cancha", "tablero"
+if CAMERA_PRESET == "centro":
+    CAMERA_POSITION: tuple[float, float, float] = (0.0, 3, 5.0)
+    CAMERA_ROTATION: tuple[float, float, float] = (-35.0, 0.0, 0.0)  # pitch, yaw, roll en grados
+elif CAMERA_PRESET == "canasta":
+    CAMERA_POSITION: tuple[float, float, float] = (-13.0, 3, 5.0)
+    CAMERA_ROTATION: tuple[float, float, float] = (-25.0, 0.0, 0.0)
+elif CAMERA_PRESET == "cancha":
+    CAMERA_POSITION: tuple[float, float, float] = (0.0, 20.0, 20.0)
+    CAMERA_ROTATION: tuple[float, float, float] = (-45.0, 0.0, 0.0)
+elif CAMERA_PRESET == "tablero":
+    CAMERA_POSITION: tuple[float, float, float] = (10.0, 3.0, 0.0)
+    CAMERA_ROTATION: tuple[float, float, float] = (0.0, -90.0, 0.0)
 
 # Render progresivo
 PIXELS_PER_FRAME: int = 4000  # mayor valor = converge más rápido, pero consume más CPU por frame

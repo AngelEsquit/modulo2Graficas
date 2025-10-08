@@ -199,6 +199,114 @@ class Disk(Shape):
         return {"t": t, "point": point, "normal": n, "material": self.material}
 
 
+class Ring(Shape):
+    """Anillo plano (contorno circular grueso) definido por centro, normal, radio externo y radio interno.
+    Si el punto intersecta el plano dentro del radio externo pero fuera del interno => hit.
+    """
+    def __init__(self, center, normal, outer_radius, inner_radius, material=None):
+        super().__init__(center, material)
+        n = np.array(normal, dtype=float)
+        self.normal = n / (np.linalg.norm(n) or 1.0)
+        self.outer_radius = float(outer_radius)
+        self.inner_radius = float(inner_radius)
+        if self.inner_radius < 0:
+            self.inner_radius = 0.0
+        if self.inner_radius >= self.outer_radius:
+            self.inner_radius = max(0.0, self.outer_radius * 0.5)
+        self.type = "Ring"
+
+    def ray_intersect(self, origin, direction):
+        denom = float(np.dot(self.normal, direction))
+        if abs(denom) < 1e-6:
+            return None
+        t = float(np.dot(self.position - origin, self.normal) / denom)
+        if t <= 1e-6:
+            return None
+        point = origin + direction * t
+        v = point - self.position
+        # Distancia al centro proyectada sobre el plano (normal ya eliminó componente perpendicular)
+        dist = np.linalg.norm(v - np.dot(v, self.normal) * self.normal)
+        if dist > self.outer_radius or dist < self.inner_radius:
+            return None
+        n = self.normal if denom < 0 else -self.normal
+        return {"t": t, "point": point, "normal": n, "material": self.material}
+
+
+class ArcRing(Shape):
+    """Arco circular plano (segmento de un anillo) definido por:
+    - center, normal: plano del arco
+    - outer_radius / inner_radius: límites radial externo e interno (para grosor de línea)
+    - start_angle, end_angle (radianes) medidos en el plano respecto al eje +X local (cuando normal=(0,1,0))
+      El ángulo se calcula con atan2(z-cz, x-cx) y se normaliza a [0, 2π).
+      Si end_angle < start_angle se asume envoltura (wrap) atravesando 2π.
+    Nota: Pensado para dibujar líneas de cancha (semicírculos de triple, etc.)
+    """
+    def __init__(self, center, normal, outer_radius, inner_radius, start_angle, end_angle, material=None):
+        super().__init__(center, material)
+        n = np.array(normal, dtype=float)
+        self.normal = n / (np.linalg.norm(n) or 1.0)
+        self.outer_radius = float(outer_radius)
+        self.inner_radius = float(inner_radius)
+        if self.inner_radius < 0:
+            self.inner_radius = 0.0
+        if self.inner_radius >= self.outer_radius:
+            self.inner_radius = max(0.0, self.outer_radius * 0.5)
+        self.start_angle = float(start_angle)
+        self.end_angle = float(end_angle)
+        self.type = "ArcRing"
+
+    @staticmethod
+    def _normalize_angle(a):
+        twopi = 2.0 * np.pi
+        a = a % twopi
+        if a < 0:
+            a += twopi
+        return a
+
+    def ray_intersect(self, origin, direction):
+        denom = float(np.dot(self.normal, direction))
+        if abs(denom) < 1e-6:
+            return None
+        t = float(np.dot(self.position - origin, self.normal) / denom)
+        if t <= 1e-6:
+            return None
+        point = origin + direction * t
+        v = point - self.position
+        # Eliminar componente perpendicular para medir radio en el plano
+        v_proj = v - np.dot(v, self.normal) * self.normal
+        dist = np.linalg.norm(v_proj)
+        if dist > self.outer_radius or dist < self.inner_radius:
+            return None
+        # Definir ejes locales para el ángulo: si el plano es horizontal, forzar u=+X, w=+Z para que 0 rad apunte en +X.
+        if abs(self.normal[1]) > 0.9 and abs(self.normal[0]) < 0.2 and abs(self.normal[2]) < 0.2:
+            u = np.array([1.0, 0.0, 0.0])  # eje de referencia (ángulo 0)
+            w = np.array([0.0, 0.0, 1.0])  # 90°
+            x_local = v_proj[0]
+            z_local = v_proj[2]
+        else:
+            # General: construir base ortonormal en el plano
+            aux = np.array([1.0, 0.0, 0.0])
+            if abs(np.dot(aux, self.normal)) > 0.9:
+                aux = np.array([0.0, 0.0, 1.0])
+            u = np.cross(self.normal, aux)
+            u /= (np.linalg.norm(u) or 1.0)
+            w = np.cross(self.normal, u)
+            x_local = np.dot(v_proj, u)
+            z_local = np.dot(v_proj, w)
+        angle = np.arctan2(z_local, x_local)
+        angle = self._normalize_angle(angle)
+        start = self._normalize_angle(self.start_angle)
+        end = self._normalize_angle(self.end_angle)
+        if start <= end:
+            inside = (start - 1e-6) <= angle <= (end + 1e-6)
+        else:  # wrap-around
+            inside = angle >= (start - 1e-6) or angle <= (end + 1e-6)
+        if not inside:
+            return None
+        n = self.normal if denom < 0 else -self.normal
+        return {"t": t, "point": point, "normal": n, "material": self.material}
+
+
 class Triangle(Shape):
     """Triángulo definido por tres vértices en espacio mundial."""
     def __init__(self, a, b, c, material=None):
@@ -287,6 +395,64 @@ class Cube(Shape):
         return {"t": float(tmin), "point": point, "normal": normal, "material": self.material}
 
 
+class Box(Shape):
+    """Paralelepípedo axis-aligned (AABB) con dimensiones independientes.
+    center: (cx, cy, cz)
+    size: (sx, sy, sz) longitudes en cada eje (si se pasa un escalar se asume cubo)
+    """
+    def __init__(self, center, size, material=None):
+        super().__init__(center, material)
+        self.type = "Box"
+        if isinstance(size, (int, float)):
+            sx = sy = sz = float(size)
+        else:
+            sx, sy, sz = [float(s) for s in size]
+        self.half = np.array([sx/2.0, sy/2.0, sz/2.0], dtype=float)
+        c = self.position
+        self.min = c - self.half
+        self.max = c + self.half
+
+    def ray_intersect(self, origin, direction):
+        tmin = -np.inf
+        tmax = np.inf
+        hit_axis = -1  # 0->x,1->y,2->z con signo
+        for i in range(3):
+            if abs(direction[i]) < 1e-8:
+                # Rayo paralelo a planos de este eje: fuera del rango => no hay intersección
+                if origin[i] < self.min[i] or origin[i] > self.max[i]:
+                    return None
+                continue
+            invD = 1.0 / direction[i]
+            t0 = (self.min[i] - origin[i]) * invD
+            t1 = (self.max[i] - origin[i]) * invD
+            sign = 1
+            if t0 > t1:
+                t0, t1 = t1, t0
+                sign = -1
+            if t0 > tmin:
+                tmin = t0
+                hit_axis = i * sign
+            tmax = min(tmax, t1)
+            if tmax <= tmin:
+                return None
+        if tmin <= 1e-6:
+            return None
+        point = origin + direction * tmin
+        # Determinar normal según el eje que definió tmin
+        normal = np.array([0.0, 0.0, 0.0])
+        axis = int(abs(hit_axis))  # 0,1,2
+        s = np.sign(hit_axis) or 1.0
+        if axis == 0:
+            normal = np.array([s, 0.0, 0.0])
+        elif axis == 1:
+            normal = np.array([0.0, s, 0.0])
+        else:
+            normal = np.array([0.0, 0.0, s])
+        if np.dot(normal, direction) > 0:
+            normal = -normal
+        return {"t": float(tmin), "point": point, "normal": normal, "material": self.material}
+
+
 class Cylinder(Shape):
     """Cilindro finito alineado al eje Y, con tapas.
     center: (x,y,z), radius: r, height: h
@@ -343,6 +509,94 @@ class Cylinder(Shape):
                         if np.dot(n, direction) > 0:
                             n = -n
                         hit = {"t": float(t), "point": p, "normal": n, "material": self.material}
+                        t_min = t
+
+        return hit
+
+
+class AxisCylinder(Shape):
+    """Cilindro finito alineado a uno de los ejes principales (x, y, z) con tapas.
+    axis: 'x' | 'y' | 'z'
+    center: centro del cilindro
+    radius: radio
+    height: longitud a lo largo del eje
+    """
+    def __init__(self, center, radius, height, axis='y', material=None):
+        super().__init__(center, material)
+        self.type = "AxisCylinder"
+        self.radius = float(radius)
+        self.half_height = float(height) / 2.0
+        if axis not in ('x','y','z'):
+            axis = 'y'
+        self.axis = axis
+
+    def _to_local(self, v):
+        # Reordenar componentes para que el eje elegido pase a ser Y.
+        if self.axis == 'y':
+            return v
+        if self.axis == 'x':  # X -> Y
+            return np.array([v[1], v[0], v[2]], dtype=float)
+        # axis == 'z': Z -> Y
+        return np.array([v[0], v[2], v[1]], dtype=float)
+
+    def _to_world_normal(self, n):
+        if self.axis == 'y':
+            return n
+        if self.axis == 'x':
+            return np.array([n[1], n[0], n[2]], dtype=float)
+        # z
+            
+        return np.array([n[0], n[2], n[1]], dtype=float)
+
+    def ray_intersect(self, origin, direction):
+        eps = 1e-6
+        # Transformar a coords locales donde el eje del cilindro es Y
+        o_world = origin - self.position
+        d_world = direction
+        o = self._to_local(o_world)
+        d = self._to_local(d_world)
+
+        t_min = np.inf
+        hit = None
+
+        # Lateral: x^2 + z^2 = r^2
+        a = d[0]*d[0] + d[2]*d[2]
+        if a > eps:
+            b = 2.0 * (o[0]*d[0] + o[2]*d[2])
+            c = o[0]*o[0] + o[2]*o[2] - self.radius*self.radius
+            disc = b*b - 4.0*a*c
+            if disc >= 0.0:
+                sqrt_disc = np.sqrt(disc)
+                for t in ((-b - sqrt_disc)/(2.0*a), (-b + sqrt_disc)/(2.0*a)):
+                    if t > eps:
+                        y = o[1] + t*d[1]
+                        if -self.half_height <= y <= self.half_height and t < t_min:
+                            p_world = origin + direction * t
+                            # Normal lateral en local (x,0,z)
+                            # Recuperar punto local para normal
+                            pl = o + d * t
+                            n_local = np.array([pl[0], 0.0, pl[2]], dtype=float)
+                            n_local /= (np.linalg.norm(n_local) or 1.0)
+                            n_world = self._to_world_normal(n_local)
+                            if np.dot(n_world, direction) > 0:
+                                n_world = -n_world
+                            hit = {"t": float(t), "point": p_world, "normal": n_world, "material": self.material}
+                            t_min = t
+
+        # Tapas (planos y = ±half_height) en espacio local
+        if abs(d[1]) > eps:
+            for ycap, n_sign in ((self.half_height, 1.0), (-self.half_height, -1.0)):
+                t = (ycap - o[1]) / d[1]
+                if t > eps and t < t_min:
+                    x = o[0] + t*d[0]
+                    z = o[2] + t*d[2]
+                    if x*x + z*z <= self.radius*self.radius + 1e-8:
+                        p_world = origin + direction * t
+                        n_local = np.array([0.0, n_sign, 0.0], dtype=float)
+                        n_world = self._to_world_normal(n_local)
+                        if np.dot(n_world, direction) > 0:
+                            n_world = -n_world
+                        hit = {"t": float(t), "point": p_world, "normal": n_world, "material": self.material}
                         t_min = t
 
         return hit
