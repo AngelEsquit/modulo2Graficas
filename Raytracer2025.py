@@ -2,7 +2,7 @@ import pygame
 from pygame.locals import *
 from gl import Renderer
 from BMP_Writer import GenerateBMP
-from config import WIDTH, HEIGHT, WINDOW_TITLE, env_path, OUTPUT_PATH, CAMERA_POSITION, CAMERA_ROTATION, PIXELS_PER_FRAME, MAX_DEPTH, AMBIENT_LIGHT, SCENE_PRESET, MODELS, ENV_INTENSITY, LIGHT_INTENSITY_SCALE
+from config import WIDTH, HEIGHT, WINDOW_TITLE, env_path, OUTPUT_PATH, CAMERA_POSITION, CAMERA_ROTATION, PIXELS_PER_FRAME, MAX_DEPTH, AMBIENT_LIGHT, SCENE_PRESET, MODELS, ENV_INTENSITY, LIGHT_INTENSITY_SCALE, ENVIRONMENT_MAP, ENV_ZOOM
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED)
@@ -43,17 +43,29 @@ if hasattr(rend, "env_intensity") and ENV_INTENSITY is not None:
         rend.env_intensity = float(ENV_INTENSITY)
     except Exception:
         pass
+if hasattr(rend, "env_zoom") and ENV_ZOOM is not None:
+    try:
+        rend.env_zoom = float(ENV_ZOOM)
+    except Exception:
+        pass
 if hasattr(rend, "light_intensity_scale") and LIGHT_INTENSITY_SCALE is not None:
     try:
         rend.light_intensity_scale = float(LIGHT_INTENSITY_SCALE)
     except Exception:
         pass
 
-# Environment map desde config
+# Environment map desde config (con mensajes de estado)
 try:
-    rend.load_environment(str(env_path()))
-except Exception:
-    pass
+    env_file = str(env_path())
+    if ENVIRONMENT_MAP:
+        if rend.load_environment(env_file):
+            print(f"Environment loaded: {env_file}")
+        else:
+            print(f"Environment NOT loaded (missing or parse error): {env_file}")
+    else:
+        print("No environment map configured (ENVIRONMENT_MAP empty)")
+except Exception as e:
+    print(f"Error loading environment: {e}")
 
 # Construcción de escena - NUEVO SISTEMA IMPLEMENTADO PARA EL PROYECTO
 try:

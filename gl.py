@@ -55,6 +55,7 @@ class Renderer:
         self.environment = None
         self.env_intensity = 1.5
         self.light_intensity_scale = 5
+        self.env_zoom = 1.0  # 1.0 = normal; >1.0 = zoom out, <1.0 = zoom in
 
         # Construcción de escena (cilindros de demostración)
         self._build_cylinder_scene()
@@ -91,7 +92,7 @@ class Renderer:
             print("Falling back to default scene")
             self._build_default_scene()
     
-    def load_obj_model(self, filepath, scale=1.0, position=(0, 0, 0), rotation=(0, 0, 0), material=None):
+    def load_obj_model(self, filepath, scale=1.0, position=(0, 0, 0), rotation=(0, 0, 0), material=None, align_min_y_to=None):
         """Carga un modelo OBJ y lo añade a la escena"""
         if not ADVANCED_FEATURES_AVAILABLE:
             print("OBJ loading not available")
@@ -99,7 +100,7 @@ class Renderer:
         
         try:
             loader = OBJLoader()
-            meshes = loader.load_obj(filepath, scale, position, rotation)
+            meshes = loader.load_obj(filepath, scale, position, rotation, align_min_y_to)
             
             for mesh in meshes:
                 if material:
@@ -461,7 +462,19 @@ class Renderer:
         view_dir = -direction
 
         # Componente base (ambiental)
-        base_color = np.array(material.color)
+        # Color base: si hay UVs y material avanzado con textura, muestrear en UV
+        if hasattr(material, 'get_diffuse_color') and ('u' in hit and 'v' in hit):
+            try:
+                base_color = np.array(material.get_diffuse_color(hit['u'], hit['v']))
+            except Exception:
+                base_color = np.array(material.color)
+        elif hasattr(material, 'get_color_at_uv') and ('u' in hit and 'v' in hit):
+            try:
+                base_color = np.array(material.get_color_at_uv(hit['u'], hit['v']))
+            except Exception:
+                base_color = np.array(material.color)
+        else:
+            base_color = np.array(material.color)
         ambient = np.array(self.ambientLight) * material.ka * base_color
         local = ambient
 
@@ -681,9 +694,21 @@ class Renderer:
     def _environment_lookup(self, direction):
         # Normalize direction
         d = direction / (np.linalg.norm(direction) or 1)
-        # Equirect mapping to [0,1]
-        u = 0.5 + (np.arctan2(d[2], d[0]) / (2*pi))
-        v = 0.5 - (np.arcsin(np.clip(d[1], -1, 1)) / pi)
+        # Equirect mapping to [0,1] with zoom factor
+        phi = np.arctan2(d[2], d[0])              # [-pi, pi]
+        theta = np.arcsin(np.clip(d[1], -1, 1))   # [-pi/2, pi/2]
+        zf = float(self.env_zoom) if hasattr(self, 'env_zoom') else 1.0
+        if not np.isfinite(zf) or zf == 0.0:
+            zf = 1.0
+        # Zoom: >1 = zoom out (cubrir mayor ángulo), <1 = zoom in
+        # Divide by zoom factor so zf>1 compresses angles (zoom out)
+        phi_z = phi / zf
+        # wrap phi to [-pi, pi]
+        phi_z = ((phi_z + pi) % (2*pi)) - pi
+        theta_z = theta / zf
+        theta_z = max(-pi/2, min(pi/2, theta_z))
+        u = 0.5 + (phi_z / (2*pi))
+        v = 0.5 - (theta_z / pi)
         # Nearest neighbor sampling with horizontal wrap
         x = int(round(u * (self.env_w - 1))) % self.env_w
         y = int(round(v * (self.env_h - 1)))

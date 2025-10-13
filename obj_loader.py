@@ -17,8 +17,16 @@ class OBJLoader:
         self.materials = {}
         self.current_material = None
     
-    def load_obj(self, filepath, scale=1.0, position=(0, 0, 0), rotation=(0, 0, 0)):
-        """Carga un archivo OBJ con soporte completo"""
+    def load_obj(self, filepath, scale=1.0, position=(0, 0, 0), rotation=(0, 0, 0), align_min_y_to=None):
+        """Carga un archivo OBJ con soporte completo
+        
+        Params:
+        - filepath: ruta del archivo OBJ
+        - scale: factor de escala uniforme
+        - position: traslación (x,y,z)
+        - rotation: rotación Euler en grados (rx, ry, rz)
+        - align_min_y_to: si no es None, ajusta el modelo para que su Y mínima coincida con este valor
+        """
         filepath = Path(filepath)
         
         if not filepath.exists():
@@ -33,6 +41,8 @@ class OBJLoader:
         # Cargar materiales si existe archivo MTL
         mtl_path = filepath.with_suffix('.mtl')
         if mtl_path.exists():
+            # Record base dir to resolve relative texture paths later
+            self._base_dir = mtl_path.parent
             self.load_mtl(mtl_path)
         
         # Cargar geometría
@@ -63,9 +73,15 @@ class OBJLoader:
             # Aplicar traslación
             vertices_array += np.array(position)
             
+            # Alinear Y mínima al valor indicado (por ejemplo, al piso)
+            if align_min_y_to is not None:
+                min_y = float(vertices_array[:, 1].min())
+                delta_y = float(align_min_y_to) - min_y
+                vertices_array[:, 1] += delta_y
+
             self.vertices = vertices_array.tolist()
         
-        return self._create_mesh_objects()
+        return self._create_mesh_objects(base_path=filepath.parent)
     
     def _parse_obj_line(self, line):
         """Parsea una línea del archivo OBJ"""
@@ -232,7 +248,7 @@ class OBJLoader:
         # Combinar rotaciones: Rz * Ry * Rx
         return Rz @ Ry @ Rx
     
-    def _create_mesh_objects(self):
+    def _create_mesh_objects(self, base_path: Path | None = None):
         """Crea objetos de malla a partir de los datos cargados"""
         if not self.faces or not self.vertices:
             return []
@@ -271,9 +287,19 @@ class OBJLoader:
                         from texture import ImageTexture
                         texture_path = Path(mat_data['diffuse_map'])
                         if not texture_path.is_absolute():
-                            # Buscar relativo al archivo OBJ
-                            # texture_path = obj_path.parent / texture_path
-                            pass
+                            # Resolver relativo al .mtl/.obj
+                            if hasattr(self, '_base_dir') and self._base_dir:
+                                texture_path = self._base_dir / texture_path
+                            elif base_path:
+                                texture_path = base_path / texture_path
+                        else:
+                            # Si es absoluto pero no existe (caso exportado con ruta local), intentar por nombre en carpeta del MTL/OBJ
+                            if not texture_path.exists():
+                                fname = texture_path.name
+                                if hasattr(self, '_base_dir') and self._base_dir and (self._base_dir / fname).exists():
+                                    texture_path = self._base_dir / fname
+                                elif base_path and (base_path / fname).exists():
+                                    texture_path = base_path / fname
                         material.diffuse_texture = ImageTexture(str(texture_path))
                     except Exception as e:
                         print(f"Warning: Could not load texture {mat_data['diffuse_map']}: {e}")

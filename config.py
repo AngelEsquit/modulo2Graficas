@@ -17,8 +17,8 @@ OUTPUT_FILENAME: str = "output.bmp"
 OUTPUT_PATH: Path = BASE_DIR / OUTPUT_FILENAME
 
 # Ventana / resolución
-WIDTH: int = 300
-HEIGHT: int = 300
+WIDTH: int = 350
+HEIGHT: int = 350
 WINDOW_TITLE: str = "RayTracer"
 
 # Environment map
@@ -27,10 +27,12 @@ WINDOW_TITLE: str = "RayTracer"
 #  - "pretoria_gardens_4k.hdr"
 #  - "noon.hdr"
 #  - "rogland_clear_night_1k.hdr"
-ENVIRONMENT_MAP: str = ""
+#  - "metro.hdr"
+# Selecciona un HDR que exista en Enviroment/
+ENVIRONMENT_MAP: str = "metro.hdr"
 
 # Cámara inicial
-CAMERA_PRESET: str = "cancha" # "centro", "canasta", "cancha", "tablero"
+CAMERA_PRESET: str = "lado" # "centro", "canasta", "cancha", "tablero", "horizonte", "lado"
 if CAMERA_PRESET == "centro":
     CAMERA_POSITION: tuple[float, float, float] = (0.0, 3, 5.0)
     CAMERA_ROTATION: tuple[float, float, float] = (-35.0, 0.0, 0.0)  # pitch, yaw, roll en grados
@@ -43,6 +45,12 @@ elif CAMERA_PRESET == "cancha":
 elif CAMERA_PRESET == "tablero":
     CAMERA_POSITION: tuple[float, float, float] = (10.0, 3.0, 0.0)
     CAMERA_ROTATION: tuple[float, float, float] = (0.0, -90.0, 0.0)
+elif CAMERA_PRESET == "horizonte":
+    CAMERA_POSITION: tuple[float, float, float] = (0.0, 5.0, 20.0)
+    CAMERA_ROTATION: tuple[float, float, float] = (0.0, 0.0, 0.0)
+elif CAMERA_PRESET == "lado":
+    CAMERA_POSITION: tuple[float, float, float] = (-8.5, 4.0, 6.25)
+    CAMERA_ROTATION: tuple[float, float, float] = (-20.0, 15.0, 10.0)
 
 # Render progresivo
 PIXELS_PER_FRAME: int = 4000  # mayor valor = converge más rápido, pero consume más CPU por frame
@@ -55,8 +63,23 @@ AMBIENT_LIGHT: tuple[float, float, float] | None = (0.65, 0.65, 0.65)
 # Intensidad del environment map (multiplicador antes del tone-mapping)
 ENV_INTENSITY: float | None = 0.6
 
+# Factor de zoom del environment: 1.0 = normal; >1.0 = ver más (zoom out)
+ENV_ZOOM: float | None = 10.0
+
 # Escala global para intensidades de luces puntuales
 LIGHT_INTENSITY_SCALE: float | None = 0.15
+
+# Tiling del suelo de la cancha (repeticiones de la textura en U y V)
+FLOOR_TILE_U: float = 12.0  # repeticiones a lo largo de X (más repeticiones = tablas más pequeñas)
+FLOOR_TILE_V: float = 6.0   # repeticiones a lo largo de Z
+FLOOR_TEXTURE_FILENAME: str = "wood.jpg"  # archivo bajo TEXTURE_DIR
+FLOOR_UV_ROTATION_DEG: float = 0.0         # 0, 90, 180, 270 para girar la veta
+FLOOR_WRAP_MODE: str = "mirror"           # "repeat" | "mirror" (mirror reduce costuras)
+
+# Marco extra del suelo (borde exterior)
+YELLOW_FLOOR_FRAME_ENABLED: bool = True
+YELLOW_FLOOR_FRAME_WIDTH: float = 2.0  # ancho del marco en unidades
+YELLOW_FLOOR_FRAME_COLOR: tuple[float, float, float] = (1.0, 0.9, 0.1)
 
 # Selección de escena (placeholder para futuras extensiones)
 # NUEVAS ESCENAS IMPLEMENTADAS PARA EL PROYECTO
@@ -99,7 +122,7 @@ MODELS: list[dict] = [
 
 # Configuración de texturas (OBLIGATORIO - al menos un material debe usar textura)
 TEXTURE_DIR: Path = BASE_DIR / "textures"
-USE_PROCEDURAL_TEXTURES: bool = True  # Usar texturas procedurales si no hay archivos de imagen
+USE_PROCEDURAL_TEXTURES: bool = False  # Usar imagen de textura si existe
 
 # Configuración de materiales avanzados (20 PUNTOS - máximo 4 materiales)
 ENABLE_ADVANCED_MATERIALS: bool = True
@@ -119,7 +142,7 @@ ENABLE_ADVANCED_SHAPES: bool = True      # Habilitar figuras avanzadas
 MAX_SHAPES_FOR_POINTS: int = 4           # Máximo evaluado para puntos
 
 # Environment Map (5 PUNTOS)
-ENVIRONMENT_MAP: str = ""  # Cambiar si tienes otro archivo
+# Nota: La variable ENVIRONMENT_MAP ya fue definida arriba. Evita redefinirla aquí para no sobrescribirla.
 
 # Complejidad de escena (30 PUNTOS)
 TARGET_SCENE_COMPLEXITY: str = "high"   # "low" (<5), "medium" (5-10), "high" (>10)

@@ -21,6 +21,11 @@ class ImageTexture(Texture):
     """Textura cargada desde imagen"""
     def __init__(self, filepath):
         super().__init__()
+        # Factores de repetición (tiling) en U y V. 1.0 = sin repetición
+        self.tile_u = 1.0
+        self.tile_v = 1.0
+        # Modo de envoltura: 'repeat' (por defecto) o 'mirror'
+        self.wrap_mode = 'repeat'
         self.load_image(filepath)
     
     def load_image(self, filepath):
@@ -64,13 +69,29 @@ class ImageTexture(Texture):
         if self.data is None:
             return (1.0, 1.0, 1.0)
         
-        # Envolver coordenadas UV
-        u = u % 1.0
-        v = v % 1.0
+        # Aplicar tiling y envolver coordenadas UV (repeat o mirror)
+        def wrap_repeat(t):
+            return t - np.floor(t)
+        def wrap_mirror(t):
+            # patrón 0..1..0..1 (espejo)
+            tt = t % 2.0
+            return 2.0 - tt if tt > 1.0 else tt
+        try:
+            uu_raw = float(u) * float(self.tile_u)
+            vv_raw = float(v) * float(self.tile_v)
+        except Exception:
+            uu_raw = u
+            vv_raw = v
+        if self.wrap_mode == 'mirror':
+            uu = wrap_mirror(uu_raw)
+            vv = wrap_mirror(vv_raw)
+        else:
+            uu = wrap_repeat(uu_raw)
+            vv = wrap_repeat(vv_raw)
         
         # Convertir a coordenadas de pixel
-        x = int(u * (self.width - 1))
-        y = int(v * (self.height - 1))
+        x = int(uu * (self.width - 1))
+        y = int(vv * (self.height - 1))
         
         # Asegurar límites
         x = max(0, min(x, self.width - 1))

@@ -450,7 +450,56 @@ class Box(Shape):
             normal = np.array([0.0, 0.0, s])
         if np.dot(normal, direction) > 0:
             normal = -normal
-        return {"t": float(tmin), "point": point, "normal": normal, "material": self.material}
+        # Calcular coordenadas UV basadas en la cara golpeada (mapeo planar por cara)
+        # Coordenadas locales centradas
+        local = point - self.position
+        # Normalizar a [0,1] en los dos ejes de la cara
+        if axis == 1:  # caras superior/inferior (Y): usar X-Z
+            u = (local[0] / (self.half[0] + 1e-12) + 1.0) * 0.5
+            v = (local[2] / (self.half[2] + 1e-12) + 1.0) * 0.5
+        elif axis == 0:  # caras en X: usar Z-Y
+            u = (local[2] / (self.half[2] + 1e-12) + 1.0) * 0.5
+            v = (local[1] / (self.half[1] + 1e-12) + 1.0) * 0.5
+        else:  # axis == 2, caras en Z: usar X-Y
+            u = (local[0] / (self.half[0] + 1e-12) + 1.0) * 0.5
+            v = (local[1] / (self.half[1] + 1e-12) + 1.0) * 0.5
+
+        # Transformaciones UV opcionales por objeto
+        # 1) Rotación alrededor del centro (0.5, 0.5)
+        rot_deg = getattr(self, 'uv_rotation_deg', None)
+        if rot_deg not in (None, 0, 0.0):
+            try:
+                ang = np.deg2rad(float(rot_deg))
+                cu, su = np.cos(ang), np.sin(ang)
+                # trasladar al centro, rotar, regresar
+                uu = u - 0.5
+                vv = v - 0.5
+                ur = uu * cu - vv * su
+                vr = uu * su + vv * cu
+                u = ur + 0.5
+                v = vr + 0.5
+            except Exception:
+                pass
+
+        # 2) Offset
+        uv_off = getattr(self, 'uv_offset', None)
+        if uv_off and len(uv_off) >= 2:
+            try:
+                u += float(uv_off[0])
+                v += float(uv_off[1])
+            except Exception:
+                pass
+
+        # 3) Tiling por objeto (para texturas procedurales normalmente)
+        tiles = getattr(self, 'uv_tiles', None)
+        if tiles and len(tiles) >= 2:
+            try:
+                u *= float(tiles[0])
+                v *= float(tiles[1])
+            except Exception:
+                pass
+
+        return {"t": float(tmin), "point": point, "normal": normal, "material": self.material, "u": float(u), "v": float(v)}
 
 
 class Cylinder(Shape):

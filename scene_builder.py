@@ -556,10 +556,11 @@ def create_artistic_scene(renderer):
 def create_basketball_court_scene(renderer):
     """Crea una cancha de basketball con suelo y canastas"""
     from advanced_materials import AdvancedMaterial, MaterialPresets
-    from texture import ProceduralTexture
+    from texture import ProceduralTexture, ImageTexture
     from figure import Sphere, Plane, Cylinder, Cube, Box, AxisCylinder, Torus
     from advanced_shapes import Capsule
-    from lighting import PointLight, DirectionalLight
+    from lighting import PointLight, DirectionalLight, SpotLight
+    from config import TEXTURE_DIR, USE_PROCEDURAL_TEXTURES, FLOOR_TILE_U, FLOOR_TILE_V, FLOOR_TEXTURE_FILENAME, FLOOR_UV_ROTATION_DEG, FLOOR_WRAP_MODE
     
     renderer.scene.clear()
     renderer.lights.clear()
@@ -567,26 +568,35 @@ def create_basketball_court_scene(renderer):
     print("Creating basketball court scene...")
     
     # === SUELO DE LA CANCHA ===
+    # Intentar cargar textura de madera y repetirla (tiling) sobre el piso
+    wood_tex = None
+    try:
+        wood_path = TEXTURE_DIR / FLOOR_TEXTURE_FILENAME
+        if wood_path.exists() and not USE_PROCEDURAL_TEXTURES:
+            wood_tex = ImageTexture(str(wood_path))
+            wood_tex.tile_u = float(FLOOR_TILE_U)
+            wood_tex.tile_v = float(FLOOR_TILE_V)
+            try:
+                wood_tex.wrap_mode = str(FLOOR_WRAP_MODE)
+            except Exception:
+                pass
+    except Exception:
+        wood_tex = None
+
+    if wood_tex is None:
+        # Fallback a textura procedimental de madera (sin tiling explícito)
+        wood_tex = ProceduralTexture("wood")
     
-    # Crear textura procedimental para líneas de la cancha
-    court_texture = ProceduralTexture("court_lines")
-    
-    # Material del suelo de la cancha (color madera clara)
+    # Material del suelo de la cancha (texturizado con madera)
     court_material = AdvancedMaterial(
-        color=(0.8, 0.6, 0.3),  # Color madera clara
+        color=(1.0, 1.0, 1.0),
         ka=0.2, kd=0.7, ks=0.1,
         shininess=16,
-        diffuse_texture=court_texture
+        diffuse_texture=wood_tex
     )
     
-    # Suelo de la cancha (plano infinito; delimitaremos con marco). Mantener y=-1 como piso.
-    floor_y = -1.0
-    court_floor = Plane(
-        point=(0, floor_y, 0),
-        normal=(0, 1, 0),
-        material=court_material
-    )
-    renderer.scene.append(court_floor)
+    # Suelo de la cancha: usaremos un Box del tamaño de la cancha para que no se salga del marco
+    floor_y = -1.0  # altura de superficie del piso
     
     # === CANASTAS ===
     
@@ -602,12 +612,8 @@ def create_basketball_court_scene(renderer):
         roughness=0.1
     )
     
-    # Material para los tableros (blanco)
-    backboard_material = AdvancedMaterial(
-        color=(0.95, 0.95, 0.95),
-        ka=0.2, kd=0.7, ks=0.3,
-        shininess=64
-    )
+    # Material para los tableros (vidrio)
+    backboard_material = MaterialPresets.create_glass(color=(0.9, 0.95, 1.0), ior=1.5)
     
     # === PROPORCIONES REALES APROXIMADAS ===
     # Longitud total: 28.65 unidades (eje X) => límites -14.325 a 14.325
@@ -621,6 +627,25 @@ def create_basketball_court_scene(renderer):
     rim_left_x = court_x_min + rim_offset   # -14 + 1.575 = -12.425
     rim_right_x = court_x_max - rim_offset  # 14 - 1.575 = 12.425
     rim_z = 0.0
+    # Crear piso limitado a las dimensiones de la cancha (delimitación)
+    floor_thickness = 0.02
+    floor_center_y = floor_y - floor_thickness/2.0  # para que la cara superior quede en y = floor_y
+    floor_width_x = (court_x_max - court_x_min)
+    floor_depth_z = (court_z_max - court_z_min)
+    court_floor_box = Box(
+        center=((court_x_min + court_x_max)/2.0, floor_center_y, (court_z_min + court_z_max)/2.0),
+        size=(floor_width_x, floor_thickness, floor_depth_z),
+        material=court_material
+    )
+    # Indicar al Box que repita UVs solo si la textura es procedimental (para ImageTexture ya se usa tile_u/v)
+    try:
+        # Rotación de la veta de la madera (si se quiere alargar en X o Z)
+        court_floor_box.uv_rotation_deg = float(FLOOR_UV_ROTATION_DEG)
+        if isinstance(wood_tex, ProceduralTexture):
+            court_floor_box.uv_tiles = (float(FLOOR_TILE_U), float(FLOOR_TILE_V))
+    except Exception:
+        pass
+    renderer.scene.append(court_floor_box)
     # Backboard: 1.80 ancho (Z), 1.05 alto, 0.08 espesor (X)
     # Dimensiones reales del tablero: 1.80 m de ancho (eje Z), 1.05 m de alto (eje Y)
     BACKBOARD_THICKNESS_X = 0.08
@@ -885,11 +910,48 @@ def create_basketball_court_scene(renderer):
     BALL_DIAMETER = 0.24
     BALL_RADIUS = BALL_DIAMETER / 2.0
     basketball = Sphere(
-        position=(0, floor_y + BALL_RADIUS, 0),  # apoyada exactamente sobre el piso
+        position=(-8.00, floor_y + BALL_RADIUS + 3, -3.5),  # apoyada exactamente sobre el piso
         radius=BALL_RADIUS,
         material=ball_material
     )
     renderer.scene.append(basketball)
+    
+    # === MODELO OBJ JUNTO A LA PELOTA (STEVE) ===
+    # TEMPORALMENTE DESHABILITADO PARA ACELERAR PRUEBAS
+    # try:
+    #     from obj_loader import OBJLoader  # ensure availability
+    #     # Colocar el personaje (Steve) a la derecha de la pelota, mirando hacia el centro
+    #     model_path = Path("models/steve/source/Steve.obj")
+    #     if model_path.exists():
+    #         scale = 2.0
+    #         char_x = -6.75
+    #         char_z = -4.5
+    #         # Guardar índice inicial para aplicar textura a los nuevos meshes
+    #         start_idx = len(renderer.scene)
+    #         renderer.load_obj_model(
+    #             str(model_path),
+    #             scale=scale,
+    #             position=(char_x, 0.0, char_z),
+    #             rotation=(0.0, -40.0, 0.0),
+    #             material=None,
+    #             align_min_y_to=floor_y
+    #         )
+    #         # Forzar textura de Steve si por alguna razón el MTL no la aplicó
+    #         try:
+    #             from texture import ImageTexture
+    #             steve_tex_path = Path("models/steve/textures/steve.png")
+    #             if steve_tex_path.exists():
+    #                 for obj in renderer.scene[start_idx:]:
+    #                     mat = getattr(obj, 'material', None)
+    #                     if mat is not None and hasattr(mat, 'get_diffuse_color'):
+    #                         mat.diffuse_texture = ImageTexture(str(steve_tex_path))
+    #         except Exception:
+    #             pass
+    #         print("Placed Steve next to the basketball")
+    #     else:
+    #         print(f"Steve OBJ not found at {model_path}")
+    # except Exception as e:
+    #     print(f"Could not place Steve model: {e}")
     
     # === ELEMENTOS ADICIONALES ===
     
@@ -966,6 +1028,44 @@ def create_basketball_court_scene(renderer):
         material=boundary_material
     )
     renderer.scene.extend([top_side, bottom_side, left_side, right_side])
+
+    # Marco exterior adicional (amarillo) - continuación del suelo, pegado a la cancha
+    try:
+        from config import YELLOW_FLOOR_FRAME_ENABLED, YELLOW_FLOOR_FRAME_WIDTH, YELLOW_FLOOR_FRAME_COLOR
+    except Exception:
+        YELLOW_FLOOR_FRAME_ENABLED, YELLOW_FLOOR_FRAME_WIDTH, YELLOW_FLOOR_FRAME_COLOR = True, 1.5, (1.0, 0.9, 0.1)
+    if YELLOW_FLOOR_FRAME_ENABLED:
+        frame_w = float(YELLOW_FLOOR_FRAME_WIDTH)
+        yellow_material = AdvancedMaterial(
+            color=tuple(YELLOW_FLOOR_FRAME_COLOR),
+            ka=0.2, kd=0.8, ks=0.1,
+            shininess=8
+        )
+        # Usar el mismo espesor y centro en Y que el piso para que sea una extensión real
+        y_center_band = floor_center_y
+        y_size_band = floor_thickness
+        # Tiras amarillas (4 lados), pegadas al borde de la cancha
+        y_top = Box(
+            center=((x_min + x_max)/2.0, y_center_band, z_min - frame_w/2.0),
+            size=((x_max - x_min), y_size_band, frame_w),
+            material=yellow_material
+        )
+        y_bottom = Box(
+            center=((x_min + x_max)/2.0, y_center_band, z_max + frame_w/2.0),
+            size=((x_max - x_min), y_size_band, frame_w),
+            material=yellow_material
+        )
+        y_left = Box(
+            center=(x_min - frame_w/2.0, y_center_band, (z_min + z_max)/2.0),
+            size=(frame_w, y_size_band, (z_max - z_min)),
+            material=yellow_material
+        )
+        y_right = Box(
+            center=(x_max + frame_w/2.0, y_center_band, (z_min + z_max)/2.0),
+            size=(frame_w, y_size_band, (z_max - z_min)),
+            material=yellow_material
+        )
+        renderer.scene.extend([y_top, y_bottom, y_left, y_right])
 
     # === RECTÁNGULOS DE LA ZONA (PAINT) BAJO CADA CANASTA ===
     # Dimensiones solicitadas: 5.8 (profundidad en X) x 3.2 (ancho en Z)
@@ -1174,6 +1274,66 @@ def create_basketball_court_scene(renderer):
     
     for light in gym_lights:
         renderer.lights.append(light)
+
+    # === LUCES DIRECCIONALES DE ESTADIO ===
+    # Dos DirectionalLight arriba de los lados largos, apuntando hacia el centro
+    stadium_height = 8.0
+    stadium_intensity = 2.5
+    stadium_color = (1.0, 0.98, 0.95)
+    # Lado izquierdo
+    left_dir_pos = (x_min, floor_y + stadium_height, 0.0)
+    left_dir_vec = np.array([1.0, -1.4, 0.0])  # hacia el centro, ligeramente inclinado hacia abajo
+    left_dir_vec = left_dir_vec / np.linalg.norm(left_dir_vec)
+    left_dir = DirectionalLight(
+        direction=left_dir_vec,
+        color=stadium_color,
+        intensity=stadium_intensity
+    )
+    renderer.lights.append(left_dir)
+    # Lado derecho
+    right_dir_pos = (x_max, floor_y + stadium_height, 0.0)
+    right_dir_vec = np.array([-1.0, -1.4, 0.0])  # hacia el centro, ligeramente inclinado hacia abajo
+    right_dir_vec = right_dir_vec / np.linalg.norm(right_dir_vec)
+    right_dir = DirectionalLight(
+        direction=right_dir_vec,
+        color=stadium_color,
+        intensity=stadium_intensity
+    )
+    renderer.lights.append(right_dir)
+    
+    # Añadir un spotlight en la posición planificada de Steve, apuntando al centro de la cancha
+    steve_x, steve_z = -6.75, -4.5
+    steve_spot_height = 2.0  # altura sobre el suelo
+    steve_spot_pos = (steve_x, floor_y + steve_spot_height, steve_z)
+    steve_target = (0.0, floor_y, 0.0)
+    steve_dir = np.array(steve_target) - np.array(steve_spot_pos)
+    steve_spot = SpotLight(
+        position=steve_spot_pos,
+        direction=steve_dir,
+        color=(1.0, 0.95, 0.9),
+        intensity=15.5,
+        inner_angle=15,
+        outer_angle=30
+    )
+    renderer.lights.append(steve_spot)
+    
+    # Añadir cuatro point lights en las esquinas de la cancha
+    corner_height = 3.5
+    corner_intensity = 1.5
+    corners = [
+        (x_min, z_min),
+        (x_min, z_max),
+        (x_max, z_min),
+        (x_max, z_max)
+    ]
+    for cx, cz in corners:
+        renderer.lights.append(PointLight(
+            position=(cx, floor_y + corner_height, cz),
+            color=(1.0, 0.98, 0.9),
+            intensity=corner_intensity,
+            attenuation_linear=0.12,
+            attenuation_quadratic=0.02
+        ))
     
     # La cámara se configura desde config.py - no sobrescribir aquí
     
@@ -1203,7 +1363,7 @@ def build_scene_from_preset(renderer, preset_name):
         print("Creating comprehensive demo scene...")
         create_complex_scene_with_obj(renderer)
     
-    # Cargar environment map si está disponible (no para basketball)
+    # Cargar environment map adicional si está disponible (se omite para basketball porque es interior)
     if preset_name != "basketball":
         env_maps = [
             "Enviroment/pretoria_gardens_4k.hdr",
@@ -1220,6 +1380,7 @@ def build_scene_from_preset(renderer, preset_name):
             except Exception as e:
                 print(f"Could not load environment map {env_map}: {e}")
     else:
-        print("Skipping environment map for basketball court (indoor gym lighting)")
+        # Ya se puede haber cargado un environment global antes; aquí solo omites uno adicional por preset
+        print("Skipping additional environment map for basketball preset (indoor gym)")
     
     print("Scene construction completed!")
