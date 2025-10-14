@@ -1303,15 +1303,16 @@ def create_basketball_court_scene(renderer):
     
     # Añadir un spotlight en la posición planificada de Steve, apuntando al centro de la cancha
     steve_x, steve_z = -6.75, -4.5
-    steve_spot_height = 2.0  # altura sobre el suelo
+    steve_spot_height = 3.0  # altura sobre el suelo
     steve_spot_pos = (steve_x, floor_y + steve_spot_height, steve_z)
-    steve_target = (0.0, floor_y, 0.0)
-    steve_dir = np.array(steve_target) - np.array(steve_spot_pos)
+    # Spotlight completamente vertical sobre Steve (apuntando hacia abajo)
+    steve_dir = np.array([0.0, -1.0, 0.0])
     steve_spot = SpotLight(
         position=steve_spot_pos,
         direction=steve_dir,
-        color=(1.0, 0.95, 0.9),
-        intensity=15.5,
+        # Color celeste para mayor visibilidad del spotlight
+        color=(0.6, 0.85, 1.0),
+        intensity=5.0,
         inner_angle=15,
         outer_angle=30
     )

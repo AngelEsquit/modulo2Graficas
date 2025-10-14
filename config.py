@@ -17,8 +17,8 @@ OUTPUT_FILENAME: str = "output.bmp"
 OUTPUT_PATH: Path = BASE_DIR / OUTPUT_FILENAME
 
 # Ventana / resolución
-WIDTH: int = 350
-HEIGHT: int = 350
+WIDTH: int = 1080
+HEIGHT: int = 720
 WINDOW_TITLE: str = "RayTracer"
 
 # Environment map
