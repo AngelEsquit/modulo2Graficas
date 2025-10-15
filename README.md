@@ -17,7 +17,7 @@ Configuración rápida (archivo `config.py`):
             <img src="BMPs/Resultado.bmp" alt="Resultado" width="95%"/>
         </td>
         <td>
-            <img src="BMPs/Referencia.bmp" alt="Referencia" width="95%"/>
+            <img src="BMPs/Referencia.jpeg" alt="Referencia" width="95%"/>
         </td>
     </tr>
 </table>

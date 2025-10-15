@@ -917,41 +917,40 @@ def create_basketball_court_scene(renderer):
     renderer.scene.append(basketball)
     
     # === MODELO OBJ JUNTO A LA PELOTA (STEVE) ===
-    # TEMPORALMENTE DESHABILITADO PARA ACELERAR PRUEBAS
-    # try:
-    #     from obj_loader import OBJLoader  # ensure availability
-    #     # Colocar el personaje (Steve) a la derecha de la pelota, mirando hacia el centro
-    #     model_path = Path("models/steve/source/Steve.obj")
-    #     if model_path.exists():
-    #         scale = 2.0
-    #         char_x = -6.75
-    #         char_z = -4.5
-    #         # Guardar índice inicial para aplicar textura a los nuevos meshes
-    #         start_idx = len(renderer.scene)
-    #         renderer.load_obj_model(
-    #             str(model_path),
-    #             scale=scale,
-    #             position=(char_x, 0.0, char_z),
-    #             rotation=(0.0, -40.0, 0.0),
-    #             material=None,
-    #             align_min_y_to=floor_y
-    #         )
-    #         # Forzar textura de Steve si por alguna razón el MTL no la aplicó
-    #         try:
-    #             from texture import ImageTexture
-    #             steve_tex_path = Path("models/steve/textures/steve.png")
-    #             if steve_tex_path.exists():
-    #                 for obj in renderer.scene[start_idx:]:
-    #                     mat = getattr(obj, 'material', None)
-    #                     if mat is not None and hasattr(mat, 'get_diffuse_color'):
-    #                         mat.diffuse_texture = ImageTexture(str(steve_tex_path))
-    #         except Exception:
-    #             pass
-    #         print("Placed Steve next to the basketball")
-    #     else:
-    #         print(f"Steve OBJ not found at {model_path}")
-    # except Exception as e:
-    #     print(f"Could not place Steve model: {e}")
+    try:
+        from obj_loader import OBJLoader  # ensure availability
+        # Colocar el personaje (Steve) a la derecha de la pelota, mirando hacia el centro
+        model_path = Path("models/steve/source/Steve.obj")
+        if model_path.exists():
+            scale = 2.0
+            char_x = -6.75
+            char_z = -4.5
+            # Guardar índice inicial para aplicar textura a los nuevos meshes
+            start_idx = len(renderer.scene)
+            renderer.load_obj_model(
+                str(model_path),
+                scale=scale,
+                position=(char_x, 0.0, char_z),
+                rotation=(0.0, -40.0, 0.0),
+                material=None,
+                align_min_y_to=floor_y
+            )
+            # Forzar textura de Steve si por alguna razón el MTL no la aplicó
+            try:
+                from texture import ImageTexture
+                steve_tex_path = Path("models/steve/textures/steve.png")
+                if steve_tex_path.exists():
+                    for obj in renderer.scene[start_idx:]:
+                        mat = getattr(obj, 'material', None)
+                        if mat is not None and hasattr(mat, 'get_diffuse_color'):
+                            mat.diffuse_texture = ImageTexture(str(steve_tex_path))
+            except Exception:
+                pass
+            print("Placed Steve next to the basketball")
+        else:
+            print(f"Steve OBJ not found at {model_path}")
+    except Exception as e:
+        print(f"Could not place Steve model: {e}")
     
     # === ELEMENTOS ADICIONALES ===
     
